@@ -2,7 +2,7 @@
 
 1- Implement hibernate bidirectional many-to-one relational mapping <br/>
 2- ER diagram :  <br/>
-NOT : Many OrderItem related to one OrderItem entity <br/>
+NOT : Many OrderItem related to one parent CustomerOrder entity <br/>
 
 ![many_to_one_er_diagram](doc/many_to_one_er_diagram.png) <br/>
 
