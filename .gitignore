@@ -24,4 +24,4 @@ hs_err_pid*
 /.idea/
 /target/
 /tomcat/
-/spring-boot-hibernate-bidirectional-many-to-one-relationship-mapping.iml
+/*.iml
