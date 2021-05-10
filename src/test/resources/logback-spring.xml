@@ -20,7 +20,9 @@
             <appender-ref ref="ConsoleAppender"/>
         </root>
         <!-- LOG triggered SQL statements -->
-        <logger name="org.hibernate.SQL" level="debug" additivity="false"/>
+        <logger name="org.hibernate.SQL" level="debug" additivity="false">
+            <appender-ref ref="ConsoleAppender"/>
+        </root>
 
         <!-- LOG Binding and Extracted Parameters -->
         <logger name="org.hibernate.type.descriptor.sql" level="trace" additivity="false">
@@ -31,15 +33,23 @@
         <root level="DEBUG">
             <appender-ref ref="ConsoleAppender"/>
         </root>
-        <logger name="org.hibernate" level="INFO" additivity="false"/>
-        <logger name="org.springframework" level="INFO" additivity="false"/>
+        <logger name="org.hibernate" level="INFO" additivity="false">
+            <appender-ref ref="ConsoleAppender"/>
+        </root>
+        <logger name="org.springframework" level="INFO" additivity="false">
+            <appender-ref ref="ConsoleAppender"/>
+        </root>
     </springProfile>
     <springProfile name="prod">
         <root level="INFO">
             <appender-ref ref="ConsoleAppender"/>
         </root>
-        <logger name="org.hibernate" level="WARN" additivity="false"/>
-        <logger name="org.springframework" level="WARN" additivity="false"/>
+        <logger name="org.hibernate" level="WARN" additivity="false">
+            <appender-ref ref="ConsoleAppender"/>
+        </root>
+        <logger name="org.springframework" level="WARN" additivity="false">
+            <appender-ref ref="ConsoleAppender"/>
+        </root>
     </springProfile>
 
 </configuration>
