@@ -22,7 +22,7 @@
         <!-- LOG triggered SQL statements -->
         <logger name="org.hibernate.SQL" level="debug" additivity="false">
             <appender-ref ref="ConsoleAppender"/>
-        </root>
+        </logger>
 
         <!-- LOG Binding and Extracted Parameters -->
         <logger name="org.hibernate.type.descriptor.sql" level="trace" additivity="false">
@@ -35,10 +35,10 @@
         </root>
         <logger name="org.hibernate" level="INFO" additivity="false">
             <appender-ref ref="ConsoleAppender"/>
-        </root>
+        </logger>
         <logger name="org.springframework" level="INFO" additivity="false">
             <appender-ref ref="ConsoleAppender"/>
-        </root>
+        </logger>
     </springProfile>
     <springProfile name="prod">
         <root level="INFO">
@@ -46,10 +46,10 @@
         </root>
         <logger name="org.hibernate" level="WARN" additivity="false">
             <appender-ref ref="ConsoleAppender"/>
-        </root>
+        </logger>
         <logger name="org.springframework" level="WARN" additivity="false">
             <appender-ref ref="ConsoleAppender"/>
-        </root>
+        </logger>
     </springProfile>
 
 </configuration>
