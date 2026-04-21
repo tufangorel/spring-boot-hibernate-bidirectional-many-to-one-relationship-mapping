@@ -39,7 +39,7 @@ public class OrderItemController {
     @PostMapping("/save")
     public ResponseEntity<?> save(@RequestBody OrderItem orderItem) {
         OrderItem response = orderItemService.save(orderItem);
-        return new ResponseEntity<OrderItem>( response, HttpStatus.OK );
+        return new ResponseEntity<OrderItem>( response, HttpStatus.CREATED );
     }
 
     @Operation(summary = "View a list of order items")
@@ -66,6 +66,9 @@ public class OrderItemController {
     @PutMapping(value = "/update/{id}", produces = "application/json")
     public ResponseEntity<?> updateOrderItem(@PathVariable Integer id, @RequestBody OrderItem orderItem){
         Optional<OrderItem> storedOrderItem = orderItemService.findByID(id);
+        if (storedOrderItem.isEmpty()) {
+            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+        }
         storedOrderItem.get().setQuantity(orderItem.getQuantity());
         orderItemService.save(storedOrderItem.get());
         return new ResponseEntity<>(HttpStatus.OK);

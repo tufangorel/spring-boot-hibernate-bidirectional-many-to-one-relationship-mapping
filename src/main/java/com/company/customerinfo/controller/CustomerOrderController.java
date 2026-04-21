@@ -37,7 +37,7 @@ public class CustomerOrderController {
     @PostMapping("/save")
     public ResponseEntity<?> save(@RequestBody CustomerOrder customerOrder) {
         CustomerOrder response = customerOrderService.save(customerOrder);
-        return new ResponseEntity<CustomerOrder>( response, HttpStatus.OK );
+        return new ResponseEntity<CustomerOrder>( response, HttpStatus.CREATED );
     }
 
     @Operation(summary = "View a list of customer orders")
@@ -64,6 +64,9 @@ public class CustomerOrderController {
     @PutMapping(value = "/update/{id}", produces = "application/json")
     public ResponseEntity<?> updateCustomer(@PathVariable Integer id, @RequestBody CustomerOrder customer){
         Optional<CustomerOrder> storedCustomerOrder = customerOrderService.findByID(id);
+        if (storedCustomerOrder.isEmpty()) {
+            return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+        }
         storedCustomerOrder.get().setOrderDate(LocalDateTime.now());
         customerOrderService.save(storedCustomerOrder.get());
         return new ResponseEntity<>(HttpStatus.OK);

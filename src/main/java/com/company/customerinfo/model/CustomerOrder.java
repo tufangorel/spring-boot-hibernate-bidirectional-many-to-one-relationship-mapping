@@ -18,7 +18,7 @@ public class CustomerOrder implements Serializable {
     private LocalDateTime orderDate;
 
     @JoinColumn(name = "fk_customer_id")
-    @OneToOne
+    @ManyToOne
     private Customer customer;
 
     private String title;
