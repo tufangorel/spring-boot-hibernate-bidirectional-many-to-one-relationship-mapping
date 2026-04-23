@@ -3,13 +3,12 @@ package com.company.customerinfo.model;
 import com.fasterxml.jackson.annotation.JsonIdentityInfo;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.ObjectIdGenerators;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
+import io.swagger.v3.oas.annotations.media.Schema;
 
-import javax.persistence.*;
+import jakarta.persistence.*;
 import java.io.Serializable;
 
-@ApiModel(value = "Customer", description = "The model for customer")
+@Schema(description = "The model for customer")
 @Entity
 @Table(name = "customer")
 @JsonIdentityInfo(
@@ -21,11 +20,11 @@ public class Customer implements Serializable {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
-    @ApiModelProperty(notes = "Name of the customer",name="name",required=true,value="test name")
+    @Schema(description = "Name of the customer", required = true, example = "test name")
     @Column(name = "name", nullable = false)
     private String name;
 
-    @ApiModelProperty(notes = "Age of the customer",name="age",required=true,value="1")
+    @Schema(description = "Age of the customer", required = true, example = "1")
     @Column(name = "age", nullable = false)
     private Integer age;
 
