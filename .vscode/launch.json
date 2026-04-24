@@ -1,0 +1,14 @@
+{
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Spring Boot-CustomerInfoApplication<spring-boot-hibernate-bidirectional-many-to-one-relationship-mapping>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "com.company.customerinfo.CustomerInfoApplication",
+            "projectName": "spring-boot-hibernate-bidirectional-many-to-one-relationship-mapping",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
+        }
+    ]
+}

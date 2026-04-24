@@ -52,7 +52,7 @@ class CustomerOrderServiceTest {
 
     @Test
     void deleteDelegatesToRepository() {
-        customerOrderService.deleteCustomerOrder(9);
+        customerOrderService.deleteCustomerOrderById(9);
 
         verify(customerOrderRepository).deleteById(9);
     }
@@ -63,7 +63,7 @@ class CustomerOrderServiceTest {
         order.setId(6);
         when(customerOrderRepository.findById(6)).thenReturn(Optional.of(order));
 
-        Optional<CustomerOrder> result = customerOrderService.findByID(6);
+        Optional<CustomerOrder> result = customerOrderService.findById(6);
 
         assertThat(result).contains(order);
         verify(customerOrderRepository).findById(6);

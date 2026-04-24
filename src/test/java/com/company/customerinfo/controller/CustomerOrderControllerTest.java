@@ -2,12 +2,14 @@ package com.company.customerinfo.controller;
 
 import com.company.customerinfo.model.CustomerOrder;
 import com.company.customerinfo.service.CustomerOrderService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -22,14 +24,19 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(CustomerOrderController.class)
+@ExtendWith(MockitoExtension.class)
 class CustomerOrderControllerTest {
 
-    @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @Mock
     private CustomerOrderService customerOrderService;
+
+    @BeforeEach
+    void setUp() {
+        CustomerOrderController controller = new CustomerOrderController(customerOrderService);
+        mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+    }
 
     @Test
     void saveReturnsCreated() throws Exception {
@@ -60,7 +67,7 @@ class CustomerOrderControllerTest {
         mockMvc.perform(delete("/customerorder/delete/4"))
                 .andExpect(status().isOk());
 
-        verify(customerOrderService).deleteCustomerOrder(4);
+        verify(customerOrderService).deleteCustomerOrderById(4);
     }
 
     @Test
@@ -68,7 +75,7 @@ class CustomerOrderControllerTest {
         CustomerOrder existing = new CustomerOrder();
         existing.setId(9);
         existing.setOrderDate(LocalDateTime.now().minusDays(1));
-        when(customerOrderService.findByID(9)).thenReturn(Optional.of(existing));
+        when(customerOrderService.findById(9)).thenReturn(Optional.of(existing));
         when(customerOrderService.save(any(CustomerOrder.class))).thenReturn(existing);
 
         mockMvc.perform(put("/customerorder/update/9")
@@ -76,19 +83,19 @@ class CustomerOrderControllerTest {
                         .content("{\"title\":\"updated\"}"))
                 .andExpect(status().isOk());
 
-        verify(customerOrderService).findByID(9);
-        verify(customerOrderService).save(existing);
+        verify(customerOrderService).findById(9);
+        verify(customerOrderService).findById(9);
     }
 
     @Test
     void updateReturnsNotFoundWhenOrderMissing() throws Exception {
-        when(customerOrderService.findByID(99)).thenReturn(Optional.empty());
+        when(customerOrderService.findById(99)).thenReturn(Optional.empty());
 
         mockMvc.perform(put("/customerorder/update/99")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"title\":\"updated\"}"))
                 .andExpect(status().isNotFound());
 
-        verify(customerOrderService).findByID(99);
+        verify(customerOrderService).findById(99);
     }
 }

@@ -28,11 +28,11 @@ public class CustomerService {
     }
 
     @Transactional
-    public void deleteCustomer(Integer id) {
+    public void deleteCustomerById(Integer id) {
         customerRepository.deleteById(id);
     }
 
-    public Optional<Customer> findCustomerByID(Integer id) {
+    public Optional<Customer> findCustomerById(Integer id) {
         return customerRepository.findById(id);
     }
 

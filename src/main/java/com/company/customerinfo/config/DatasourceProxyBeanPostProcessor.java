@@ -21,7 +21,7 @@ import javax.sql.DataSource;
 import java.lang.reflect.Method;
 import java.util.List;
 
-@Component
+//@Component
 public class DatasourceProxyBeanPostProcessor implements BeanPostProcessor {
 
     private static final Logger logger
