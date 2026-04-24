@@ -34,11 +34,11 @@ public class CustomerOrderService {
     }
 
     @Transactional
-    public void deleteCustomerOrder(Integer id) {
+    public void deleteCustomerOrderById(Integer id) {
         customerOrderRepository.deleteById(id);
     }
 
-    public Optional<CustomerOrder> findByID(Integer id) {
+    public Optional<CustomerOrder> findById(Integer id) {
         return customerOrderRepository.findById(id);
     }
 }

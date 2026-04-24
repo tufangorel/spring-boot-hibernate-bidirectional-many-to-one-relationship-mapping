@@ -23,7 +23,7 @@ public class OrderItemService {
         return orderItemRepository.save(orderItem);
     }
 
-    public Optional<OrderItem> findByID(Integer id){
+    public Optional<OrderItem> findById(Integer id){
         return orderItemRepository.findById(id);
     }
 
@@ -32,7 +32,7 @@ public class OrderItemService {
     }
 
     @Transactional
-    public void deleteOrderItemByID(Integer id) {
+    public void deleteOrderItemById(Integer id) {
         orderItemRepository.deleteById(id);
     }
 }

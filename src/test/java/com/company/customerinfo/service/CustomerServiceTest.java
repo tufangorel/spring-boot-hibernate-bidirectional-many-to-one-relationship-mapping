@@ -46,9 +46,9 @@ class CustomerServiceTest {
 
     @Test
     void deleteCustomerDelegatesToRepository() {
-        customerService.deleteCustomer(3);
+        customerService.deleteCustomerById(11);
 
-        verify(customerRepository).deleteById(3);
+        verify(customerRepository).deleteById(11);
     }
 
     @Test
@@ -57,7 +57,7 @@ class CustomerServiceTest {
         customer.setId(11);
         when(customerRepository.findById(11)).thenReturn(Optional.of(customer));
 
-        Optional<Customer> result = customerService.findCustomerByID(11);
+        Optional<Customer> result = customerService.findCustomerById(11);
 
         assertThat(result).contains(customer);
         verify(customerRepository).findById(11);

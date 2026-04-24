@@ -2,12 +2,14 @@ package com.company.customerinfo.controller;
 
 import com.company.customerinfo.model.Customer;
 import com.company.customerinfo.service.CustomerService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.Collections;
 import java.util.Optional;
@@ -21,14 +23,20 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(CustomerController.class)
+@ExtendWith(MockitoExtension.class)
 class CustomerControllerTest {
 
-    @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @Mock
     private CustomerService customerService;
+
+    @BeforeEach
+    void setUp() {
+        CustomerController controller = new CustomerController(customerService);
+        mockMvc = MockMvcBuilders.standaloneSetup(controller)
+                .build();
+    }
 
     @Test
     void saveReturnsCreated() throws Exception {
@@ -59,7 +67,7 @@ class CustomerControllerTest {
         mockMvc.perform(delete("/customer/delete/1"))
                 .andExpect(status().isOk());
 
-        verify(customerService).deleteCustomer(1);
+        verify(customerService).deleteCustomerById(1);
     }
 
     @Test
@@ -67,7 +75,7 @@ class CustomerControllerTest {
         Customer existing = new Customer();
         existing.setId(3);
         existing.setAge(10);
-        when(customerService.findCustomerByID(3)).thenReturn(Optional.of(existing));
+        when(customerService.findCustomerById(3)).thenReturn(Optional.of(existing));
         when(customerService.save(any(Customer.class))).thenReturn(existing);
 
         mockMvc.perform(put("/customer/update/3")
@@ -75,19 +83,19 @@ class CustomerControllerTest {
                         .content("{\"age\":25}"))
                 .andExpect(status().isOk());
 
-        verify(customerService).findCustomerByID(3);
+        verify(customerService).findCustomerById(3);
         verify(customerService).save(existing);
     }
 
     @Test
     void updateReturnsNotFoundWhenCustomerMissing() throws Exception {
-        when(customerService.findCustomerByID(99)).thenReturn(Optional.empty());
+        when(customerService.findCustomerById(99)).thenReturn(Optional.empty());
 
         mockMvc.perform(put("/customer/update/99")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"age\":25}"))
                 .andExpect(status().isNotFound());
 
-        verify(customerService).findCustomerByID(99);
+        verify(customerService).findCustomerById(99);
     }
 }
