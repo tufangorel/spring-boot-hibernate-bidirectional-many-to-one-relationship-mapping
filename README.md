@@ -1,159 +1,324 @@
-## spring-boot-hibernate-bidirectional-many-to-one-relationship-mapping
+# Spring Boot Hibernate Bidirectional Many-to-One Relationship Mapping
 
-1- Implement hibernate bidirectional many-to-one relational mapping <br/>
-2- ER diagram :  <br/>
-NOT : Many OrderItem related to one parent CustomerOrder entity <br/>
+[![Java](https://img.shields.io/badge/Java-25-orange)](https://openjdk.java.net/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.0.6-brightgreen)](https://spring.io/projects/spring-boot)
+[![Maven](https://img.shields.io/badge/Maven-3.9.11-blue)](https://maven.apache.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-![many_to_one_er_diagram](doc/many_to_one_er_diagram.png) <br/>
+A comprehensive Spring Boot application demonstrating Hibernate bidirectional many-to-one relationship mapping with a complete customer order management system.
 
+## 📋 Table of Contents
 
-3- Start Spring Boot application with a specific profile such as "-Dspring.profiles.active=dev" . <br/>
-4- swagger-ui can be accessed from URL : http://localhost:8080/customer-info/swagger-ui/ <br/><br/>
+- [Features](#features)
+- [Architecture](#architecture)
+- [Tech Stack](#tech-stack)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Usage](#usage)
+- [API Documentation](#api-documentation)
+- [Testing](#testing)
+- [Project Structure](#project-structure)
+- [Contributing](#contributing)
+- [License](#license)
 
-![swagger_ui](doc/swagger_ui.png) <br/>
-<br/>
+## ✨ Features
 
-### Tech Stack
-Java 11 <br/>
-H2 Database Engine <br/>
-spring boot <br/>
-spring data jpa <br/>
-spring web <br/>
-hibernate <br/>
-logback <br/>
-maven <br/>
-junit <br/>
-springfox-swagger-ui <br/>
-datasource-proxy <br/>
-<br/>
+- **Bidirectional Relationship Mapping**: Demonstrates Hibernate many-to-one relationships between Customer, CustomerOrder, OrderItem, and ShippingAddress entities
+- **RESTful API**: Complete CRUD operations for all entities
+- **Swagger UI**: Interactive API documentation
+- **H2 Database**: In-memory database with console access
+- **Spring Boot Actuator**: Health checks and application monitoring
+- **Comprehensive Testing**: Unit tests, integration tests, and Layer 2 smoke tests
+- **Containerized Testing**: Docker-based smoke tests for production-like validation
 
+## 🏗️ Architecture
 
-## API OPERATIONS
-### Save customer sucessfully to database
+### Entity Relationships
 
-Method : HTTP.POST <br/>
-URL : localhost:8080/customer-info/customer/save <br/>
+```
+Customer (1) ────→ (Many) CustomerOrder
+Customer (1) ────→ (1) ShippingAddress
+CustomerOrder (1) ────→ (Many) OrderItem
+```
 
-Request : 
-<pre>
-curl --location --request POST 'localhost:8080/customer-info/customer/save' \
---header 'Content-Type: application/json' \
---data-raw '{
-    "name": "name1",
-    "age": 1,
-    "shippingAddress": {
-        "streetName": "software",
-        "city": "ankara",
-        "country": "TR"
-    }
-}'
-</pre><br/>
+**Key Points:**
+- Many OrderItems are related to one parent CustomerOrder entity
+- Bidirectional navigation between entities
+- Cascade operations for data persistence
+- Lazy/Eager loading configurations
 
-Response : 
+### ER Diagram
 
-HTTP response code 200 <br/>
-<pre>
+![Entity Relationship Diagram](doc/many_to_one_er_diagram.png)
+
+## 🛠️ Tech Stack
+
+- **Java**: 25
+- **Spring Boot**: 4.0.6
+- **Spring Data JPA**: Hibernate implementation
+- **Database**: H2 (In-memory)
+- **Build Tool**: Maven 3.9.11
+- **Documentation**: SpringDoc OpenAPI (Swagger)
+- **Testing**: JUnit 5, Spring Boot Test
+- **Monitoring**: Spring Boot Actuator
+- **Logging**: Logback
+- **Containerization**: Docker & Docker Compose
+
+## 📋 Prerequisites
+
+- **Java**: JDK 25 or higher
+- **Maven**: 3.9.11 or higher
+- **Docker**: For running smoke tests (optional)
+- **Git**: For version control
+
+## 🚀 Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/tufangorel/spring-boot-hibernate-bidirectional-many-to-one-relationship-mapping.git
+   cd spring-boot-hibernate-bidirectional-many-to-one-relationship-mapping
+   ```
+
+2. **Build the application**
+   ```bash
+   ./mvnw clean compile
+   ```
+
+3. **Run the application**
+   ```bash
+   ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+   ```
+
+The application will start on `http://localhost:8080/customer-info`
+
+## 📖 Usage
+
+### Application Profiles
+
+- **dev**: Development profile with detailed logging
+- **test**: Testing profile with test-specific configurations
+
+### Accessing the Application
+
+- **Swagger UI**: http://localhost:8080/customer-info/swagger-ui/
+- **H2 Console**: http://localhost:8080/customer-info/h2/
+- **Health Check**: http://localhost:8080/customer-info/actuator/health
+
+### H2 Database Configuration
+
+- **URL**: `jdbc:h2:mem:cust`
+- **Username**: `sa`
+- **Password**: `123456`
+- **Driver**: `org.h2.Driver`
+
+## 📚 API Documentation
+
+### Customer Management
+
+#### Create Customer
+```bash
+POST /customer-info/customer/save
+Content-Type: application/json
+
 {
-    "id": 1,
-    "name": "name1",
-    "age": 1,
+    "name": "John Doe",
+    "age": 30,
     "shippingAddress": {
-        "id": 1,
-        "streetName": "software",
-        "city": "ankara",
+        "streetName": "123 Main St",
+        "city": "Istanbul",
         "country": "TR"
     }
 }
-</pre>
+```
 
-### Create a new CustomerOrder with many OrderItems for Customer id = 1.
+#### List Customers
+```bash
+GET /customer-info/customer/list
+```
 
-Method : HTTP.POST <br/>
-URL : localhost:8080/customer-info/customerorder/save <br/>
+#### Update Customer
+```bash
+PUT /customer-info/customer/update/{id}
+```
 
-Request : 
-<pre>
-curl --location --request POST 'localhost:8080/customer-info/customerorder/save' \
---header 'Content-Type: application/json' \
---data-raw '{
+#### Delete Customer
+```bash
+DELETE /customer-info/customer/delete/{id}
+```
+
+### Order Management
+
+#### Create Customer Order with Items
+```bash
+POST /customer-info/customerorder/save
+Content-Type: application/json
+
+{
   "customer": {
-    "age": 0,
     "id": 1,
-    "name": "string",
+    "name": "John Doe",
+    "age": 30,
     "shippingAddress": {
-      "city": "string",
-      "country": "string",
       "id": 1,
-      "streetName": "string"
+      "streetName": "123 Main St",
+      "city": "Istanbul",
+      "country": "TR"
     }
   },
-  "orderDate": "2021-05-05T16:00:35.350Z",
+  "orderDate": "2026-04-28T16:00:00",
+  "title": "Spring Order",
   "orderItems": [
     {
-      "quantity": 1
-    },
-    {
       "quantity": 2
-    }
-  ],
-  "title": "string"
-}'
-</pre><br/>
-
-Response : 
-
-HTTP response code 200 <br/>
-<pre>
-{
-    "id": 1,
-    "orderDate": "2021-05-05T16:00:35.35",
-    "customer": {
-        "id": 1,
-        "name": "string",
-        "age": 0,
-        "shippingAddress": {
-            "id": 1,
-            "streetName": "string",
-            "city": "string",
-            "country": "string"
-        }
     },
-    "title": "string",
-    "orderItems": [
-        {
-            "id": 1,
-            "quantity": 1
-        },
-        {
-            "id": 2,
-            "quantity": 2
-        }
-    ]
+    {
+      "quantity": 1
+    }
+  ]
 }
-</pre><br/>
+```
 
-### List OrderItems saved to database
+#### List Customer Orders
+```bash
+GET /customer-info/customerorder/list
+```
 
-Method : HTTP.GET <br/>
-URL : localhost:8080/customer-info/orderitem/list <br/>
+#### Update Customer Order
+```bash
+PUT /customer-info/customerorder/update/{id}
+```
 
-Request : 
-<pre>
-curl --location --request GET 'localhost:8080/customer-info/orderitem/list'
-</pre><br/>
+#### Delete Customer Order
+```bash
+DELETE /customer-info/customerorder/delete/{id}
+```
 
-Response : 
+### Order Item Management
 
-HTTP response code 200 <br/>
-<pre>
-[
-    {
-        "id": 1,
-        "quantity": 1
-    },
-    {
-        "id": 2,
-        "quantity": 2
-    }
-]
-</pre><br/>
+#### List Order Items
+```bash
+GET /customer-info/orderitem/list
+```
+
+#### Create Order Item
+```bash
+POST /customer-info/orderitem/save
+Content-Type: application/json
+
+{
+    "quantity": 5
+}
+```
+
+#### Update Order Item
+```bash
+PUT /customer-info/orderitem/update/{id}
+```
+
+#### Delete Order Item
+```bash
+DELETE /customer-info/orderitem/delete/{id}
+```
+
+## 🧪 Testing
+
+### Unit Tests & Integration Tests
+
+Run all tests:
+```bash
+./mvnw test
+```
+
+Run with coverage:
+```bash
+./mvnw test jacoco:report
+```
+
+### Layer 2 Smoke Tests
+
+The project includes comprehensive Layer 2 smoke tests that validate the application in a containerized environment.
+
+#### Prerequisites for Smoke Tests
+- Docker installed and running
+- Docker Compose available
+
+#### Running Smoke Tests
+
+**Unix/Linux/Mac:**
+```bash
+bash .github/integration-tests/run-layer2-tests.sh
+```
+
+**Windows:**
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .github/integration-tests/run-layer2-tests.ps1
+```
+
+#### What Smoke Tests Validate
+- ✅ Application startup and health endpoint
+- ✅ Customer creation and persistence
+- ✅ Customer order creation with multiple items
+- ✅ Bidirectional relationship integrity
+- ✅ Database operations in containerized environment
+
+### Test Results
+```
+✅ Layer 2 smoke tests PASSED
+========================================
+```
+
+## 📁 Project Structure
+
+```
+spring-boot-hibernate-bidirectional-many-to-one-relationship-mapping/
+├── .github/
+│   └── integration-tests/          # Layer 2 smoke tests
+├── src/
+│   ├── main/
+│   │   ├── java/
+│   │   │   └── com/company/customerinfo/
+│   │   │       ├── config/         # Configuration classes
+│   │   │       ├── controller/     # REST controllers
+│   │   │       ├── model/          # JPA entities
+│   │   │       ├── repository/     # Data repositories
+│   │   │       ├── service/        # Business logic
+│   │   │       └── CustomerInfoApplication.java
+│   │   └── resources/              # Application properties
+│   └── test/                       # Unit and integration tests
+├── doc/                            # Documentation and diagrams
+├── pom.xml                         # Maven configuration
+├── mvnw & mvnw.cmd                 # Maven wrapper
+└── README.md                       # This file
+```
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+### Development Guidelines
+
+- Follow Spring Boot best practices
+- Write comprehensive unit tests
+- Update documentation for API changes
+- Ensure all tests pass before submitting PR
+- Use meaningful commit messages
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙋 Support
+
+If you have any questions or issues:
+
+1. Check the [Issues](https://github.com/tufangorel/spring-boot-hibernate-bidirectional-many-to-one-relationship-mapping/issues) page
+2. Review the API documentation in Swagger UI
+3. Check the Layer 2 smoke test results for common issues
+
+---
+
+**Happy Coding! 🚀**
