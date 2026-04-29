@@ -46,6 +46,8 @@ class CustomerServiceTest {
 
     @Test
     void deleteCustomerDelegatesToRepository() {
+        when(customerRepository.existsById(11)).thenReturn(true);
+
         customerService.deleteCustomerById(11);
 
         verify(customerRepository).deleteById(11);

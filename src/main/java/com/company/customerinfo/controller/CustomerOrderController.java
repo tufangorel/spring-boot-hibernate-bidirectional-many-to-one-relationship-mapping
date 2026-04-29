@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -29,7 +30,7 @@ public class CustomerOrderController {
             @ApiResponse( responseCode = "201", description = "customer order created", content = { @Content(mediaType = "application/json")} ),
             @ApiResponse(responseCode = "404", description = "Bad request") })
     @PostMapping("/save")
-    public ResponseEntity<CustomerOrder> save(@RequestBody CustomerOrder customerOrder) {
+    public ResponseEntity<CustomerOrder> save(@Valid @RequestBody CustomerOrder customerOrder) {
         CustomerOrder response = customerOrderService.save(customerOrder);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
@@ -56,7 +57,7 @@ public class CustomerOrderController {
 
     @Operation(summary = "Update a customer order")
     @PutMapping(value = "/update/{id}", produces = "application/json")
-    public ResponseEntity<Void> updateCustomer(@PathVariable Integer id, @RequestBody CustomerOrder customerOrder){
+    public ResponseEntity<Void> updateCustomer(@PathVariable Integer id, @Valid @RequestBody CustomerOrder customerOrder){
         return customerOrderService.findById(id)
                 .map(storedCustomerOrder -> {
                     storedCustomerOrder.setOrderDate(LocalDateTime.now());

@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIdentityInfo;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.ObjectIdGenerators;
 import io.swagger.v3.oas.annotations.media.Schema;
-
+import jakarta.validation.constraints.*;
 import jakarta.persistence.*;
 import java.io.Serializable;
 
@@ -21,10 +21,16 @@ public class Customer implements Serializable {
     private Integer id;
 
     @Schema(description = "Name of the customer", required = true, example = "test name")
+    @NotNull(message = "Customer name is required")
+    @NotBlank(message = "Customer name cannot be blank")
+    @Size(min = 2, max = 100, message = "Name must be between 2 and 100 characters")
     @Column(name = "name", nullable = false)
     private String name;
 
     @Schema(description = "Age of the customer", required = true, example = "1")
+    @NotNull(message = "Age is required")
+    @Min(value = 18, message = "Age must be at least 18")
+    @Max(value = 120, message = "Age cannot exceed 120")
     @Column(name = "age", nullable = false)
     private Integer age;
 

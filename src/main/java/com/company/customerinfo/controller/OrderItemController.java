@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -29,7 +30,7 @@ public class OrderItemController {
             @ApiResponse( responseCode = "201", description = "order item created", content = { @Content(mediaType = "application/json")} ),
             @ApiResponse(responseCode = "404", description = "Bad request") })
     @PostMapping("/save")
-    public ResponseEntity<OrderItem> save(@RequestBody OrderItem orderItem) {
+    public ResponseEntity<OrderItem> save(@Valid @RequestBody OrderItem orderItem) {
         OrderItem response = orderItemService.save(orderItem);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
@@ -56,7 +57,7 @@ public class OrderItemController {
 
     @Operation(summary = "Update an order item")
     @PutMapping(value = "/update/{id}", produces = "application/json")
-    public ResponseEntity<Void> updateOrderItem(@PathVariable Integer id, @RequestBody OrderItem orderItem){
+    public ResponseEntity<Void> updateOrderItem(@PathVariable Integer id, @Valid @RequestBody OrderItem orderItem){
         return orderItemService.findById(id)
                 .map(storedOrderItem -> {
                     storedOrderItem.setQuantity(orderItem.getQuantity());
