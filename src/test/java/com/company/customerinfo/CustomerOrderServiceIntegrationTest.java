@@ -33,7 +33,7 @@ public class CustomerOrderServiceIntegrationTest {
 
         Customer customer = new Customer();
         customer.setName("name1");
-        customer.setAge(1);
+        customer.setAge(25);
 
         ShippingAddress shippingAddress = new ShippingAddress();
         shippingAddress.setCountry("TR");
@@ -47,6 +47,7 @@ public class CustomerOrderServiceIntegrationTest {
         CustomerOrder customerOrder = new CustomerOrder();
         customerOrder.setCustomer(customer);
         customerOrder.setOrderDate(LocalDateTime.now());
+        customerOrder.setTitle("Order-001");
 
         OrderItem orderItem1 = new OrderItem();
         orderItem1.setQuantity(1);

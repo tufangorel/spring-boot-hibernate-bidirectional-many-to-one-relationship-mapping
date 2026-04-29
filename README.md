@@ -27,6 +27,9 @@ A comprehensive Spring Boot application demonstrating Hibernate bidirectional ma
 - **RESTful API**: Complete CRUD operations for all entities
 - **Swagger UI**: Interactive API documentation
 - **H2 Database**: In-memory database with console access
+- **Resilience4j**: Circuit breaker, retry, time limiter, and bulkhead patterns for service reliability
+- **Global Error Handling**: Centralized exception handling with standardized HTTP error responses
+- **Validation**: Jakarta Bean Validation for request payloads and domain constraints
 - **Spring Boot Actuator**: Health checks and application monitoring
 - **Comprehensive Testing**: Unit tests, integration tests, and Layer 2 smoke tests
 - **Containerized Testing**: Docker-based smoke tests for production-like validation
@@ -56,6 +59,8 @@ CustomerOrder (1) ────→ (Many) OrderItem
 - **Java**: 25
 - **Spring Boot**: 4.0.6
 - **Spring Data JPA**: Hibernate implementation
+- **Resilience4j**: Circuit breaker, retry, time limiter, and bulkhead support
+- **Jakarta Bean Validation**: Request payload validation via Spring Boot starter validation
 - **Database**: H2 (In-memory)
 - **Build Tool**: Maven 3.9.11
 - **Documentation**: SpringDoc OpenAPI (Swagger)
@@ -103,6 +108,16 @@ The application will start on `http://localhost:8080/customer-info`
 - **Swagger UI**: http://localhost:8080/customer-info/swagger-ui/
 - **H2 Console**: http://localhost:8080/customer-info/h2/
 - **Health Check**: http://localhost:8080/customer-info/actuator/health
+
+## ⚙️ Configuration
+
+The application uses `src/main/resources/application.yml` to configure the servlet context path, H2 datasource, JPA settings, logging, actuator endpoints, and Resilience4j policies. The default context path is `/customer-info`.
+
+The `resilience4j` configuration includes:
+- `circuitbreaker` for failure isolation
+- `retry` for transient error retries
+- `timelimiter` for request timeouts
+- `bulkhead` for concurrent call limits
 
 ### H2 Database Configuration
 
@@ -227,6 +242,11 @@ DELETE /customer-info/orderitem/delete/{id}
 Run all tests:
 ```bash
 ./mvnw test
+```
+
+Run only integration tests:
+```bash
+./mvnw test -Dtest="*IntegrationTest"
 ```
 
 Run with coverage:

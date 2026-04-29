@@ -42,6 +42,7 @@ class CustomerControllerTest {
     void saveReturnsCreated() throws Exception {
         Customer customer = new Customer();
         customer.setName("name-1");
+        customer.setAge(20);
         when(customerService.save(any(Customer.class))).thenReturn(customer);
 
         mockMvc.perform(post("/customer/save")

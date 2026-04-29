@@ -2,7 +2,7 @@ package com.company.customerinfo.model;
 
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-
+import jakarta.validation.constraints.*;
 import jakarta.persistence.*;
 import java.io.Serializable;
 
@@ -15,6 +15,9 @@ public class OrderItem implements Serializable {
     private Integer id;
 
     @Column
+    @NotNull(message = "Quantity is required")
+    @Min(value = 1, message = "Quantity must be at least 1")
+    @Max(value = 10000, message = "Quantity cannot exceed 10000")
     private int quantity;
 
     @JsonIgnore

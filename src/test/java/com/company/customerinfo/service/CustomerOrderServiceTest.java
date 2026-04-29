@@ -52,6 +52,8 @@ class CustomerOrderServiceTest {
 
     @Test
     void deleteDelegatesToRepository() {
+        when(customerOrderRepository.existsById(9)).thenReturn(true);
+
         customerOrderService.deleteCustomerOrderById(9);
 
         verify(customerOrderRepository).deleteById(9);

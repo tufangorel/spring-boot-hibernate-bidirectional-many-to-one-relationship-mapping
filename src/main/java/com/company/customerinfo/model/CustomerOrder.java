@@ -1,5 +1,6 @@
 package com.company.customerinfo.model;
 
+import jakarta.validation.constraints.*;
 import jakarta.persistence.*;
 import java.io.Serializable;
 import java.time.LocalDateTime;
@@ -14,13 +15,18 @@ public class CustomerOrder implements Serializable {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
+    @NotNull(message = "Order date is required")
     @Column
     private LocalDateTime orderDate;
 
+    @NotNull(message = "Customer is required")
     @JoinColumn(name = "fk_customer_id")
     @ManyToOne
     private Customer customer;
 
+    @NotNull(message = "Order title is required")
+    @NotBlank(message = "Order title cannot be blank")
+    @Size(min = 2, max = 100, message = "Title must be between 2 and 100 characters")
     private String title;
 
     @OneToMany( mappedBy = "customerOrder",

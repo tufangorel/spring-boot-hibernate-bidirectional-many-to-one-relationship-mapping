@@ -46,7 +46,7 @@ class CustomerOrderControllerTest {
 
         mockMvc.perform(post("/customerorder/save")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"title\":\"order-1\"}"))
+                        .content("{\"title\":\"order-1\",\"orderDate\":\"2026-04-29T10:00:00\",\"customer\":{\"id\":1}}"))
                 .andExpect(status().isCreated());
 
         verify(customerOrderService).save(any(CustomerOrder.class));
@@ -80,7 +80,7 @@ class CustomerOrderControllerTest {
 
         mockMvc.perform(put("/customerorder/update/9")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"title\":\"updated\"}"))
+                        .content("{\"title\":\"updated\",\"orderDate\":\"2026-04-29T10:00:00\",\"customer\":{\"id\":1}}"))
                 .andExpect(status().isOk());
 
         verify(customerOrderService).findById(9);
@@ -93,7 +93,7 @@ class CustomerOrderControllerTest {
 
         mockMvc.perform(put("/customerorder/update/99")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"title\":\"updated\"}"))
+                        .content("{\"title\":\"updated\",\"orderDate\":\"2026-04-29T10:00:00\",\"customer\":{\"id\":1}}"))
                 .andExpect(status().isNotFound());
 
         verify(customerOrderService).findById(99);

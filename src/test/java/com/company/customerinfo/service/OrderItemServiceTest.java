@@ -58,6 +58,8 @@ class OrderItemServiceTest {
 
     @Test
     void deleteDelegatesToRepository() {
+        when(orderItemRepository.existsById(5)).thenReturn(true);
+
         orderItemService.deleteOrderItemById(5);
 
         verify(orderItemRepository).deleteById(5);
