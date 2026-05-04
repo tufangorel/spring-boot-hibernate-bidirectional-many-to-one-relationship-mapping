@@ -15,6 +15,8 @@ import java.util.Collections;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -41,14 +43,29 @@ class OrderItemControllerTest {
     void saveReturnsCreated() throws Exception {
         OrderItem item = new OrderItem();
         item.setId(12);
-        when(orderItemService.save(any(OrderItem.class))).thenReturn(item);
+        when(orderItemService.save(any(OrderItem.class), any())).thenReturn(item);
 
         mockMvc.perform(post("/orderitem/save")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"quantity\":3}"))
                 .andExpect(status().isCreated());
 
-        verify(orderItemService).save(any(OrderItem.class));
+        verify(orderItemService).save(any(OrderItem.class), any());
+    }
+
+    @Test
+    void saveReturnsCreatedWithIdempotencyKey() throws Exception {
+        OrderItem item = new OrderItem();
+        item.setId(12);
+        when(orderItemService.save(any(OrderItem.class), eq("idem-key"))).thenReturn(item);
+
+        mockMvc.perform(post("/orderitem/save")
+                        .header("Idempotency-Key", "idem-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"quantity\":3}"))
+                .andExpect(status().isCreated());
+
+        verify(orderItemService).save(any(OrderItem.class), eq("idem-key"));
     }
 
     @Test

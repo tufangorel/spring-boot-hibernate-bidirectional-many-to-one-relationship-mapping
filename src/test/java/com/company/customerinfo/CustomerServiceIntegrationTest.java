@@ -43,7 +43,7 @@ public class CustomerServiceIntegrationTest {
         shippingAddress.setStreetName("KaleSokak");
         customer.setShippingAddress(shippingAddress);
 
-        Customer savedRecord = customerService.save(customer);
+        Customer savedRecord = customerService.save(customer, "test-customer-key-1");
         assertThat( savedRecord.getShippingAddress() != null);
 
         Customer customerFromShippingAddressID = shippingAddressService.findCustomerByShippingAddressID(shippingAddress.getId());
@@ -82,7 +82,7 @@ public class CustomerServiceIntegrationTest {
         OrderItem orderItem2 = new OrderItem();
         orderItem2.setQuantity(2);
 
-        Customer savedRecord = customerService.save(customer);
+        Customer savedRecord = customerService.save(customer, "test-customer-key-2");
         assertThat( savedRecord.getShippingAddress() != null);
 
         Customer customerFromShippingAddressID = shippingAddressService.findCustomerByShippingAddressID(shippingAddress.getId());

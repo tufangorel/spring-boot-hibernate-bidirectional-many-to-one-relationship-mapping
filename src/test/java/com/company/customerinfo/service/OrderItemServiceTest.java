@@ -20,6 +20,8 @@ class OrderItemServiceTest {
 
     @Mock
     private OrderItemRepository orderItemRepository;
+    @Mock
+    private IdempotencyService idempotencyService;
 
     @InjectMocks
     private OrderItemService orderItemService;

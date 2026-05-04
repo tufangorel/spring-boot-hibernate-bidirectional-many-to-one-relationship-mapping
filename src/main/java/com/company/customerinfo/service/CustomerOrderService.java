@@ -12,6 +12,7 @@ import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Optional;
@@ -21,24 +22,41 @@ import java.util.Optional;
 public class CustomerOrderService {
 
     private final CustomerOrderRepository customerOrderRepository;
+    private final IdempotencyService idempotencyService;
 
-    public CustomerOrderService(CustomerOrderRepository customerOrderRepository) {
+    public CustomerOrderService(CustomerOrderRepository customerOrderRepository, IdempotencyService idempotencyService) {
         this.customerOrderRepository = customerOrderRepository;
+        this.idempotencyService = idempotencyService;
+    }
+
+    public CustomerOrder save(CustomerOrder customerOrder) {
+        return save(customerOrder, null);
     }
 
     @Transactional
     @CircuitBreaker(name = "customerService", fallbackMethod = "saveFallback")
     @Retry(name = "customerService")
-    public CustomerOrder save(CustomerOrder customerOrder){
+    public CustomerOrder save(CustomerOrder customerOrder, String idempotencyKey){
         if (customerOrder == null) {
             throw new IllegalArgumentException("Customer order cannot be null");
         }
         log.info("Saving customer order: {}", customerOrder.getTitle());
+
+        if (StringUtils.hasText(idempotencyKey)) {
+            Optional<Integer> existingId = idempotencyService.findResourceId(idempotencyKey, "customerOrder");
+            if (existingId.isPresent()) {
+                return customerOrderRepository.findById(existingId.get())
+                        .orElseThrow(() -> new IllegalStateException("Idempotency key exists but customer order resource is missing."));
+            }
+        }
+
         try {
             for( OrderItem orderItem: customerOrder.getOrderItems() ) {
                 orderItem.setCustomerOrder(customerOrder);
             }
-            return customerOrderRepository.save(customerOrder);
+            CustomerOrder savedCustomerOrder = customerOrderRepository.save(customerOrder);
+            idempotencyService.saveRecord(idempotencyKey, "customerOrder", savedCustomerOrder.getId());
+            return savedCustomerOrder;
         } catch (Exception ex) {
             log.error("Error saving customer order", ex);
             throw new ServiceUnavailableException("Failed to save customer order", ex);
@@ -68,11 +86,10 @@ public class CustomerOrderService {
         log.info("Deleting customer order with ID: {}", id);
         try {
             if (!customerOrderRepository.existsById(id)) {
-                throw new ResourceNotFoundException("Customer order with ID " + id + " not found");
+                log.info("Customer order with ID {} not found, delete is idempotent", id);
+                return;
             }
             customerOrderRepository.deleteById(id);
-        } catch (ResourceNotFoundException ex) {
-            throw ex;
         } catch (Exception ex) {
             log.error("Error deleting customer order", ex);
             throw new ServiceUnavailableException("Failed to delete customer order", ex);
@@ -98,7 +115,7 @@ public class CustomerOrderService {
     }
 
     // Fallback methods
-    public CustomerOrder saveFallback(CustomerOrder customerOrder, Exception ex) {
+    public CustomerOrder saveFallback(CustomerOrder customerOrder, String idempotencyKey, Exception ex) {
         log.error("Circuit breaker triggered for save operation", ex);
         throw new ServiceUnavailableException("Service temporarily unavailable. Please try again later.");
     }

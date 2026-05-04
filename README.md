@@ -30,9 +30,10 @@ A comprehensive Spring Boot application demonstrating Hibernate bidirectional ma
 - **Resilience4j**: Circuit breaker, retry, time limiter, and bulkhead patterns for service reliability
 - **Global Error Handling**: Centralized exception handling with standardized HTTP error responses
 - **Validation**: Jakarta Bean Validation for request payloads and domain constraints
-- **Spring Boot Actuator**: Health checks and application monitoring
+- **Spring Boot Actuator**: Health checks, metrics, info, and Prometheus-compatible metrics export
 - **Comprehensive Testing**: Unit tests, integration tests, and Layer 2 smoke tests
 - **Containerized Testing**: Docker-based smoke tests for production-like validation
+- **Idempotent order creation**: Optional `Idempotency-Key` header on `POST /customerorder/save` stores a mapping in `idempotency_record` so retries return the same saved order instead of creating duplicates
 
 ## 🏗️ Architecture
 
@@ -50,6 +51,10 @@ CustomerOrder (1) ────→ (Many) OrderItem
 - Cascade operations for data persistence
 - Lazy/Eager loading configurations
 
+### Idempotency (customer orders)
+
+Create-order requests may send an optional HTTP header `Idempotency-Key` (non-blank string, up to 128 characters in storage). The first successful save persists the new order id keyed by `(idempotency_key, entity_type)` in the `idempotency_record` table. Later requests with the same key for customer orders load that order from the database and return it with no second insert. If the header is omitted or blank, behavior is unchanged from a normal create.
+
 ### ER Diagram
 
 ![Entity Relationship Diagram](doc/many_to_one_er_diagram.png)
@@ -65,8 +70,9 @@ CustomerOrder (1) ────→ (Many) OrderItem
 - **Build Tool**: Maven 3.9.11
 - **Documentation**: SpringDoc OpenAPI (Swagger)
 - **Testing**: JUnit 5, Spring Boot Test
-- **Monitoring**: Spring Boot Actuator
+- **Monitoring**: Spring Boot Actuator (health, metrics, info) and Micrometer Prometheus registry
 - **Logging**: Logback
+- **SQL observability**: datasource-proxy (JDBC proxy for SQL logging and diagnostics)
 - **Containerization**: Docker & Docker Compose
 
 ## 📋 Prerequisites
@@ -91,7 +97,7 @@ CustomerOrder (1) ────→ (Many) OrderItem
 
 3. **Run the application**
    ```bash
-   ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+   ./mvnw spring-boot:run "-Dspring-boot.run.profiles=dev"
    ```
 
 The application will start on `http://localhost:8080/customer-info`
@@ -105,9 +111,10 @@ The application will start on `http://localhost:8080/customer-info`
 
 ### Accessing the Application
 
-- **Swagger UI**: http://localhost:8080/customer-info/swagger-ui/
+- **Swagger UI**: http://localhost:8080/customer-info/swagger-ui/index.html
 - **H2 Console**: http://localhost:8080/customer-info/h2/
 - **Health Check**: http://localhost:8080/customer-info/actuator/health
+- **Prometheus scrape**: http://localhost:8080/customer-info/actuator/prometheus
 
 ## ⚙️ Configuration
 
@@ -118,6 +125,8 @@ The `resilience4j` configuration includes:
 - `retry` for transient error retries
 - `timelimiter` for request timeouts
 - `bulkhead` for concurrent call limits
+
+Actuator web endpoints exposed by default in `application.yml` include `health`, `metrics`, `prometheus`, and `info`.
 
 ### H2 Database Configuration
 
@@ -164,6 +173,13 @@ DELETE /customer-info/customer/delete/{id}
 ### Order Management
 
 #### Create Customer Order with Items
+
+Optional header for safe retries (same body + same key returns the first persisted order):
+
+```http
+Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
+```
+
 ```bash
 POST /customer-info/customerorder/save
 Content-Type: application/json
@@ -249,6 +265,8 @@ Run only integration tests:
 ./mvnw test -Dtest="*IntegrationTest"
 ```
 
+Integration tests include, among others, `CustomerOrderIdempotencyIntegrationTest` (verifies duplicate `POST` with the same `Idempotency-Key`), `CustomerOrderServiceIntegrationTest`, `CustomerServiceIntegrationTest`, and `DatasourceProxyListenerIntegrationTest`.
+
 Run with coverage:
 ```bash
 ./mvnw test jacoco:report
@@ -299,9 +317,9 @@ spring-boot-hibernate-bidirectional-many-to-one-relationship-mapping/
 │   │   │   └── com/company/customerinfo/
 │   │   │       ├── config/         # Configuration classes
 │   │   │       ├── controller/     # REST controllers
-│   │   │       ├── model/          # JPA entities
-│   │   │       ├── repository/     # Data repositories
-│   │   │       ├── service/        # Business logic
+│   │   │       ├── model/          # JPA entities (including IdempotencyRecord)
+│   │   │       ├── repository/     # Data repositories (including IdempotencyRecordRepository)
+│   │   │       ├── service/        # Business logic (including IdempotencyService)
 │   │   │       └── CustomerInfoApplication.java
 │   │   └── resources/              # Application properties
 │   └── test/                       # Unit and integration tests
