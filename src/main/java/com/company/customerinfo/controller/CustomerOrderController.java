@@ -30,8 +30,10 @@ public class CustomerOrderController {
             @ApiResponse( responseCode = "201", description = "customer order created", content = { @Content(mediaType = "application/json")} ),
             @ApiResponse(responseCode = "404", description = "Bad request") })
     @PostMapping("/save")
-    public ResponseEntity<CustomerOrder> save(@Valid @RequestBody CustomerOrder customerOrder) {
-        CustomerOrder response = customerOrderService.save(customerOrder);
+    public ResponseEntity<CustomerOrder> save(
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @Valid @RequestBody CustomerOrder customerOrder) {
+        CustomerOrder response = customerOrderService.save(customerOrder, idempotencyKey);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -60,7 +62,12 @@ public class CustomerOrderController {
     public ResponseEntity<Void> updateCustomer(@PathVariable Integer id, @Valid @RequestBody CustomerOrder customerOrder){
         return customerOrderService.findById(id)
                 .map(storedCustomerOrder -> {
-                    storedCustomerOrder.setOrderDate(LocalDateTime.now());
+                    storedCustomerOrder.setOrderDate(customerOrder.getOrderDate());
+                    storedCustomerOrder.setTitle(customerOrder.getTitle());
+                    if (customerOrder.getOrderItems() != null) {
+                        storedCustomerOrder.getOrderItems().clear();
+                        customerOrder.getOrderItems().forEach(storedCustomerOrder::addOrderItem);
+                    }
                     customerOrderService.save(storedCustomerOrder);
                     return ResponseEntity.ok().<Void>build();
                 })

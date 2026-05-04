@@ -29,8 +29,10 @@ public class CustomerController {
             @ApiResponse( responseCode = "201", description = "customer created", content = { @Content(mediaType = "application/json")} ),
             @ApiResponse(responseCode = "404", description = "Bad request") })
     @PostMapping("/save")
-    public ResponseEntity<Customer> save(@Valid @RequestBody Customer customer) {
-        Customer response = customerService.save(customer);
+    public ResponseEntity<Customer> save(
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @Valid @RequestBody Customer customer) {
+        Customer response = customerService.save(customer, idempotencyKey);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 

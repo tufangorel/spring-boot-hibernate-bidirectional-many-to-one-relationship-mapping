@@ -15,6 +15,8 @@ import java.util.Collections;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -43,14 +45,30 @@ class CustomerControllerTest {
         Customer customer = new Customer();
         customer.setName("name-1");
         customer.setAge(20);
-        when(customerService.save(any(Customer.class))).thenReturn(customer);
+        when(customerService.save(any(Customer.class), any())).thenReturn(customer);
 
         mockMvc.perform(post("/customer/save")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"name-1\",\"age\":20}"))
                 .andExpect(status().isCreated());
 
-        verify(customerService).save(any(Customer.class));
+        verify(customerService).save(any(Customer.class), any());
+    }
+
+    @Test
+    void saveReturnsCreatedWithIdempotencyKey() throws Exception {
+        Customer customer = new Customer();
+        customer.setName("name-1");
+        customer.setAge(20);
+        when(customerService.save(any(Customer.class), eq("idem-key"))).thenReturn(customer);
+
+        mockMvc.perform(post("/customer/save")
+                        .header("Idempotency-Key", "idem-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"name-1\",\"age\":20}"))
+                .andExpect(status().isCreated());
+
+        verify(customerService).save(any(Customer.class), eq("idem-key"));
     }
 
     @Test

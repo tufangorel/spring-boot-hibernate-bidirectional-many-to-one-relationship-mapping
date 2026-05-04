@@ -16,6 +16,8 @@ import java.util.Collections;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -42,14 +44,29 @@ class CustomerOrderControllerTest {
     void saveReturnsCreated() throws Exception {
         CustomerOrder order = new CustomerOrder();
         order.setId(2);
-        when(customerOrderService.save(any(CustomerOrder.class))).thenReturn(order);
+        when(customerOrderService.save(any(CustomerOrder.class), any())).thenReturn(order);
 
         mockMvc.perform(post("/customerorder/save")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"title\":\"order-1\",\"orderDate\":\"2026-04-29T10:00:00\",\"customer\":{\"id\":1}}"))
                 .andExpect(status().isCreated());
 
-        verify(customerOrderService).save(any(CustomerOrder.class));
+        verify(customerOrderService).save(any(CustomerOrder.class), any());
+    }
+
+    @Test
+    void saveReturnsCreatedWithIdempotencyKey() throws Exception {
+        CustomerOrder order = new CustomerOrder();
+        order.setId(2);
+        when(customerOrderService.save(any(CustomerOrder.class), eq("idem-key"))).thenReturn(order);
+
+        mockMvc.perform(post("/customerorder/save")
+                        .header("Idempotency-Key", "idem-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"order-1\",\"orderDate\":\"2026-04-29T10:00:00\",\"customer\":{\"id\":1}}"))
+                .andExpect(status().isCreated());
+
+        verify(customerOrderService).save(any(CustomerOrder.class), eq("idem-key"));
     }
 
     @Test

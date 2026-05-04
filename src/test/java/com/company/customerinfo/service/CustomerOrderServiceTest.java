@@ -21,6 +21,8 @@ class CustomerOrderServiceTest {
 
     @Mock
     private CustomerOrderRepository customerOrderRepository;
+    @Mock
+    private IdempotencyService idempotencyService;
 
     @InjectMocks
     private CustomerOrderService customerOrderService;

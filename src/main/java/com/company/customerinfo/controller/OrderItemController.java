@@ -30,8 +30,10 @@ public class OrderItemController {
             @ApiResponse( responseCode = "201", description = "order item created", content = { @Content(mediaType = "application/json")} ),
             @ApiResponse(responseCode = "404", description = "Bad request") })
     @PostMapping("/save")
-    public ResponseEntity<OrderItem> save(@Valid @RequestBody OrderItem orderItem) {
-        OrderItem response = orderItemService.save(orderItem);
+    public ResponseEntity<OrderItem> save(
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @Valid @RequestBody OrderItem orderItem) {
+        OrderItem response = orderItemService.save(orderItem, idempotencyKey);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 

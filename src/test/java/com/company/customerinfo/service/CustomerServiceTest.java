@@ -20,6 +20,8 @@ class CustomerServiceTest {
 
     @Mock
     private CustomerRepository customerRepository;
+    @Mock
+    private IdempotencyService idempotencyService;
 
     @InjectMocks
     private CustomerService customerService;
