@@ -1,14 +1,17 @@
 package com.company.customerinfo.service;
 
 
-import com.company.customerinfo.exception.ResourceNotFoundException;
 import com.company.customerinfo.exception.ServiceUnavailableException;
 import com.company.customerinfo.model.OrderItem;
 import com.company.customerinfo.repository.OrderItemRepository;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
-import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -22,20 +25,30 @@ public class OrderItemService {
 
     private final OrderItemRepository orderItemRepository;
     private final IdempotencyService idempotencyService;
+    private OrderItemService self;
 
     public OrderItemService(OrderItemRepository orderItemRepository, IdempotencyService idempotencyService) {
         this.orderItemRepository = orderItemRepository;
         this.idempotencyService = idempotencyService;
     }
 
+    @Autowired
+    public void setSelf(@Lazy OrderItemService self) {
+        this.self = self;
+    }
+
     public OrderItem save(OrderItem orderItem) {
-        return save(orderItem, null);
+        return self.save(orderItem, null);
     }
 
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "orderItems", allEntries = true),
+            @CacheEvict(value = "customerOrders", allEntries = true)
+    })
     @CircuitBreaker(name = "customerService", fallbackMethod = "saveFallback")
     @Retry(name = "customerService")
-    public OrderItem save(OrderItem orderItem, String idempotencyKey){
+    public OrderItem save(OrderItem orderItem, String idempotencyKey) {
         if (orderItem == null) {
             throw new IllegalArgumentException("Order item cannot be null");
         }
@@ -60,7 +73,8 @@ public class OrderItemService {
     }
 
     @Transactional(readOnly = true)
-    public Optional<OrderItem> findById(Integer id){
+    @Cacheable(value = "orderItems", key = "#id", unless = "#result == null || #result.isEmpty()")
+    public Optional<OrderItem> findById(Integer id) {
         if (id == null || id <= 0) {
             throw new IllegalArgumentException("Invalid order item ID");
         }
@@ -78,6 +92,7 @@ public class OrderItemService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(value = "orderItems", key = "'all'", sync = true)
     @CircuitBreaker(name = "customerService", fallbackMethod = "findAllFallback")
     @Retry(name = "customerService")
     public List<OrderItem> findAll() {
@@ -91,6 +106,10 @@ public class OrderItemService {
     }
 
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "orderItems", allEntries = true),
+            @CacheEvict(value = "customerOrders", allEntries = true)
+    })
     @CircuitBreaker(name = "customerService", fallbackMethod = "deleteByIdFallback")
     @Retry(name = "customerService")
     public void deleteOrderItemById(Integer id) {

@@ -15,6 +15,8 @@ A comprehensive Spring Boot application demonstrating Hibernate bidirectional ma
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Usage](#usage)
+- [Configuration](#configuration)
+- [Caching](#caching)
 - [API Documentation](#api-documentation)
 - [Testing](#testing)
 - [Project Structure](#project-structure)
@@ -34,6 +36,7 @@ A comprehensive Spring Boot application demonstrating Hibernate bidirectional ma
 - **Comprehensive Testing**: Unit tests, integration tests, and Layer 2 smoke tests
 - **Containerized Testing**: Docker-based smoke tests for production-like validation
 - **Idempotent order creation**: Optional `Idempotency-Key` header on `POST /customerorder/save` stores a mapping in `idempotency_record` so retries return the same saved order instead of creating duplicates
+- **Response caching**: Spring Cache with Caffeine on read paths in the service layer (`@Cacheable` / `@CacheEvict`), with cache-friendly JPA fetch queries for customer orders and shipping-address lookups
 
 ## 🏗️ Architecture
 
@@ -73,6 +76,7 @@ Create-order requests may send an optional HTTP header `Idempotency-Key` (non-bl
 - **Monitoring**: Spring Boot Actuator (health, metrics, info) and Micrometer Prometheus registry
 - **Logging**: Logback
 - **SQL observability**: datasource-proxy (JDBC proxy for SQL logging and diagnostics)
+- **Caching**: Spring Cache abstraction backed by **Caffeine** (`spring-boot-starter-cache` + `caffeine`)
 - **Containerization**: Docker & Docker Compose
 
 ## 📋 Prerequisites
@@ -106,8 +110,9 @@ The application will start on `http://localhost:8080/customer-info`
 
 ### Application Profiles
 
-- **dev**: Development profile with detailed logging
+- **dev**: Development profile with detailed logging; **Spring Cache is disabled** (`spring.cache.type=none`) so integration tests stay deterministic
 - **test**: Testing profile with test-specific configurations
+- **default** (no profile, or non-dev): Caffeine cache settings from `application.yml` apply
 
 ### Accessing the Application
 
@@ -118,7 +123,7 @@ The application will start on `http://localhost:8080/customer-info`
 
 ## ⚙️ Configuration
 
-The application uses `src/main/resources/application.yml` to configure the servlet context path, H2 datasource, JPA settings, logging, actuator endpoints, and Resilience4j policies. The default context path is `/customer-info`.
+The application uses `src/main/resources/application.yml` to configure the servlet context path, H2 datasource, JPA settings, logging, actuator endpoints, Resilience4j policies, and Caffeine-backed Spring Cache. The default context path is `/customer-info`.
 
 The `resilience4j` configuration includes:
 - `circuitbreaker` for failure isolation
@@ -134,6 +139,23 @@ Actuator web endpoints exposed by default in `application.yml` include `health`,
 - **Username**: `sa`
 - **Password**: `123456`
 - **Driver**: `org.h2.Driver`
+
+## Caching
+
+Caching is applied in **services** (not controllers): `@Cacheable` on read methods and `@CacheEvict` (including `@Caching`) after writes so lists and detail views stay consistent.
+
+| Cache name | Backed data | Typical invalidation |
+|------------|-------------|----------------------|
+| `customers` | `CustomerService.findAll`, `findCustomerById` | Customer save/delete (and idempotent customer save) |
+| `customerOrders` | `CustomerOrderService.findAll`, `findById` | Customer order save/delete; order item save/delete |
+| `orderItems` | `OrderItemService.findAll`, `findById` | Order item save/delete; customer order save/delete |
+| `customerByShippingAddress` | `ShippingAddressService.findCustomerByShippingAddressID` | Customer save/delete |
+
+**Defaults** (`application.yml`): `spring.cache.type=caffeine`, up to **1000 entries** per cache, **10 minutes** time-to-live after write (`expireAfterWrite`). Cache names are declared explicitly under `spring.cache.cache-names`.
+
+**JPA and JSON**: Customer orders are loaded with **join-fetch** repository methods (`findAllWithAssociations`, `findByIdWithAssociations`) so cached `CustomerOrder` graphs include `orderItems`, `customer`, and `shippingAddress` where needed. The shipping-address lookup uses a `Customer`-root fetch query so Hibernate 6 join rules are satisfied.
+
+**Profiles**: The **`dev`** profile sets `spring.cache.type=none` in `application-dev.properties` (integration tests use `@ActiveProfiles("dev")`). **Test** `application*.properties` also set `spring.cache.type=none` so Surefire runs do not depend on cache state. Run **without** the `dev` profile (default `application.yml`) to exercise in-memory caching locally.
 
 ## 📚 API Documentation
 
@@ -267,6 +289,8 @@ Run only integration tests:
 
 Integration tests include, among others, `CustomerOrderIdempotencyIntegrationTest` (verifies duplicate `POST` with the same `Idempotency-Key`), `CustomerOrderServiceIntegrationTest`, `CustomerServiceIntegrationTest`, and `DatasourceProxyListenerIntegrationTest`.
 
+Caching is turned off under the `dev` profile and in shared test `application*.properties` (`spring.cache.type=none`), so these tests always hit the database unless you change that configuration.
+
 Run with coverage:
 ```bash
 ./mvnw test jacoco:report
@@ -319,7 +343,7 @@ spring-boot-hibernate-bidirectional-many-to-one-relationship-mapping/
 │   │   │       ├── controller/     # REST controllers
 │   │   │       ├── model/          # JPA entities (including IdempotencyRecord)
 │   │   │       ├── repository/     # Data repositories (including IdempotencyRecordRepository)
-│   │   │       ├── service/        # Business logic (including IdempotencyService)
+│   │   │       ├── service/        # Business logic, Resilience4j, @Cacheable / @CacheEvict
 │   │   │       └── CustomerInfoApplication.java
 │   │   └── resources/              # Application properties
 │   └── test/                       # Unit and integration tests

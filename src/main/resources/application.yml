@@ -1,4 +1,9 @@
 spring:
+  cache:
+    type: caffeine
+    cache-names: customers, customerOrders, orderItems, customerByShippingAddress
+    caffeine:
+      spec: maximumSize=1000,expireAfterWrite=10m
   main:
     banner-mode: off
   servlet:

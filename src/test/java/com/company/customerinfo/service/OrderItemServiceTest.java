@@ -2,6 +2,7 @@ package com.company.customerinfo.service;
 
 import com.company.customerinfo.model.OrderItem;
 import com.company.customerinfo.repository.OrderItemRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -25,6 +26,11 @@ class OrderItemServiceTest {
 
     @InjectMocks
     private OrderItemService orderItemService;
+
+    @BeforeEach
+    void wireSelf() {
+        orderItemService.setSelf(orderItemService);
+    }
 
     @Test
     void saveDelegatesToRepository() {
