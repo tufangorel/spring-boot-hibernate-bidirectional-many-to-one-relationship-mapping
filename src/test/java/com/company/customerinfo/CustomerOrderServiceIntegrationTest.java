@@ -7,10 +7,13 @@ import com.company.customerinfo.model.OrderItem;
 import com.company.customerinfo.model.ShippingAddress;
 import com.company.customerinfo.service.CustomerOrderService;
 import com.company.customerinfo.service.CustomerService;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.time.LocalDateTime;
@@ -18,14 +21,26 @@ import java.time.LocalDateTime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 
-@SpringBootTest(classes = CustomerInfoApplication.class)
+@SpringBootTest(
+        classes = CustomerInfoApplication.class,
+        properties = "spring.datasource.url=jdbc:h2:mem:cust_order_service_it;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE"
+)
 @ActiveProfiles("dev")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 public class CustomerOrderServiceIntegrationTest {
 
     @Autowired
     private CustomerService customerService;
     @Autowired
     private CustomerOrderService customerOrderService;
+
+    @Autowired
+    private CircuitBreakerRegistry circuitBreakerRegistry;
+
+    @BeforeEach
+    void resetResilienceState() {
+        circuitBreakerRegistry.circuitBreaker("customerService").reset();
+    }
 
     @Order(1)
     @Test
