@@ -6,12 +6,13 @@ import com.company.customerinfo.repository.CustomerOrderRepository;
 import com.company.customerinfo.repository.CustomerRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Bean;
 import org.springframework.http.MediaType;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -23,8 +24,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(classes = CustomerInfoApplication.class)
+@SpringBootTest(
+        classes = CustomerInfoApplication.class,
+        properties = "spring.datasource.url=jdbc:h2:mem:cust_idempotency_it;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE"
+)
 @ActiveProfiles("dev")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class CustomerOrderIdempotencyIntegrationTest {
 
     @Autowired
@@ -41,8 +46,12 @@ class CustomerOrderIdempotencyIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private CircuitBreakerRegistry circuitBreakerRegistry;
+
     @BeforeEach
     void setUp() {
+        circuitBreakerRegistry.circuitBreaker("customerService").reset();
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
         customerOrderRepository.deleteAll();
         customerRepository.deleteAll();

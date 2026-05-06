@@ -37,6 +37,8 @@ A comprehensive Spring Boot application demonstrating Hibernate bidirectional ma
 - **Containerized Testing**: Docker-based smoke tests for production-like validation
 - **Idempotent order creation**: Optional `Idempotency-Key` header on `POST /customerorder/save` stores a mapping in `idempotency_record` so retries return the same saved order instead of creating duplicates
 - **Response caching**: Spring Cache with Caffeine on read paths in the service layer (`@Cacheable` / `@CacheEvict`), with cache-friendly JPA fetch queries for customer orders and shipping-address lookups
+- **Graceful shutdown**: Spring Boot graceful server shutdown with lifecycle timeout and application shutdown hooks for predictable stop behavior
+- **Stabilized integration tests**: Isolated Spring test contexts, per-test circuit-breaker reset, and dedicated in-memory H2 URLs for flaky integration classes
 
 ## 🏗️ Architecture
 
@@ -123,7 +125,7 @@ The application will start on `http://localhost:8080/customer-info`
 
 ## ⚙️ Configuration
 
-The application uses `src/main/resources/application.yml` to configure the servlet context path, H2 datasource, JPA settings, logging, actuator endpoints, Resilience4j policies, and Caffeine-backed Spring Cache. The default context path is `/customer-info`.
+The application uses `src/main/resources/application.yml` to configure the servlet context path, H2 datasource, JPA settings, logging, actuator endpoints, Resilience4j policies, graceful shutdown behavior, and Caffeine-backed Spring Cache. The default context path is `/customer-info`.
 
 The `resilience4j` configuration includes:
 - `circuitbreaker` for failure isolation
@@ -132,6 +134,15 @@ The `resilience4j` configuration includes:
 - `bulkhead` for concurrent call limits
 
 Actuator web endpoints exposed by default in `application.yml` include `health`, `metrics`, `prometheus`, and `info`.
+
+### Graceful Shutdown
+
+Graceful shutdown is enabled for both `.yml` and `.properties` configuration paths:
+
+- `server.shutdown=graceful`
+- `spring.lifecycle.timeout-per-shutdown-phase=30s`
+
+On shutdown, `GracefulShutdownListener` logs both shutdown start (`ContextClosedEvent`) and resource release completion (`@PreDestroy`).
 
 ### H2 Database Configuration
 
@@ -290,6 +301,16 @@ Run only integration tests:
 Integration tests include, among others, `CustomerOrderIdempotencyIntegrationTest` (verifies duplicate `POST` with the same `Idempotency-Key`), `CustomerOrderServiceIntegrationTest`, `CustomerServiceIntegrationTest`, and `DatasourceProxyListenerIntegrationTest`.
 
 Caching is turned off under the `dev` profile and in shared test `application*.properties` (`spring.cache.type=none`), so these tests always hit the database unless you change that configuration.
+
+Integration test stability improvements:
+
+- Spring context isolation with `@DirtiesContext(classMode = AFTER_EACH_TEST_METHOD)` on core integration suites
+- Explicit `CircuitBreakerRegistry` reset in `@BeforeEach` for `customerService`
+- Dedicated H2 in-memory URLs per integration class to avoid shared schema/state side effects
+
+Graceful shutdown coverage:
+
+- `GracefulShutdownIntegrationTest` validates graceful shutdown properties and shutdown listener lifecycle logs during context close.
 
 Run with coverage:
 ```bash

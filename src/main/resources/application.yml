@@ -37,8 +37,11 @@ spring:
     console:
       enabled: true
       path: /h2
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
 
 server:
+  shutdown: graceful
   tomcat:
     accesslog:
       enabled: true
