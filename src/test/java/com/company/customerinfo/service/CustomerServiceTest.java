@@ -2,6 +2,7 @@ package com.company.customerinfo.service;
 
 import com.company.customerinfo.model.Customer;
 import com.company.customerinfo.repository.CustomerRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -20,9 +21,16 @@ class CustomerServiceTest {
 
     @Mock
     private CustomerRepository customerRepository;
+    @Mock
+    private IdempotencyService idempotencyService;
 
     @InjectMocks
     private CustomerService customerService;
+
+    @BeforeEach
+    void wireSelf() {
+        customerService.setSelf(customerService);
+    }
 
     @Test
     void saveDelegatesToRepository() {

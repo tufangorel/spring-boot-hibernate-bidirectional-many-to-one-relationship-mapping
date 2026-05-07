@@ -1,16 +1,20 @@
 package com.company.customerinfo.service;
 
 
-import com.company.customerinfo.exception.ResourceNotFoundException;
 import com.company.customerinfo.exception.ServiceUnavailableException;
 import com.company.customerinfo.model.Customer;
 import com.company.customerinfo.repository.CustomerRepository;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
-import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Optional;
@@ -20,21 +24,48 @@ import java.util.Optional;
 public class CustomerService {
 
     private final CustomerRepository customerRepository;
+    private final IdempotencyService idempotencyService;
+    private CustomerService self;
 
-    public CustomerService(CustomerRepository customerRepository) {
+    public CustomerService(CustomerRepository customerRepository, IdempotencyService idempotencyService) {
         this.customerRepository = customerRepository;
+        this.idempotencyService = idempotencyService;
+    }
+
+    @Autowired
+    public void setSelf(@Lazy CustomerService self) {
+        this.self = self;
+    }
+
+    public Customer save(Customer customer) {
+        return self.save(customer, null);
     }
 
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "customers", allEntries = true),
+            @CacheEvict(value = "customerByShippingAddress", allEntries = true)
+    })
     @CircuitBreaker(name = "customerService", fallbackMethod = "saveFallback")
     @Retry(name = "customerService")
-    public Customer save(Customer customer){
+    public Customer save(Customer customer, String idempotencyKey) {
         if (customer == null) {
             throw new IllegalArgumentException("Customer cannot be null");
         }
         log.info("Saving customer: {}", customer.getName());
+
+        if (StringUtils.hasText(idempotencyKey)) {
+            Optional<Integer> existingId = idempotencyService.findResourceId(idempotencyKey, "customer");
+            if (existingId.isPresent()) {
+                return customerRepository.findById(existingId.get())
+                        .orElseThrow(() -> new IllegalStateException("Idempotency key exists but customer resource is missing."));
+            }
+        }
+
         try {
-            return customerRepository.save(customer);
+            Customer savedCustomer = customerRepository.save(customer);
+            idempotencyService.saveRecord(idempotencyKey, "customer", savedCustomer.getId());
+            return savedCustomer;
         } catch (Exception ex) {
             log.error("Error saving customer", ex);
             throw new ServiceUnavailableException("Failed to save customer", ex);
@@ -42,9 +73,10 @@ public class CustomerService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(value = "customers", key = "'all'", sync = true)
     @CircuitBreaker(name = "customerService", fallbackMethod = "findAllFallback")
     @Retry(name = "customerService")
-    public List<Customer> findAll(){
+    public List<Customer> findAll() {
         log.info("Fetching all customers");
         try {
             return customerRepository.findAll();
@@ -55,6 +87,10 @@ public class CustomerService {
     }
 
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "customers", allEntries = true),
+            @CacheEvict(value = "customerByShippingAddress", allEntries = true)
+    })
     @CircuitBreaker(name = "customerService", fallbackMethod = "deleteByIdFallback")
     @Retry(name = "customerService")
     public void deleteCustomerById(Integer id) {
@@ -64,11 +100,10 @@ public class CustomerService {
         log.info("Deleting customer with ID: {}", id);
         try {
             if (!customerRepository.existsById(id)) {
-                throw new ResourceNotFoundException("Customer with ID " + id + " not found");
+                log.info("Customer with ID {} not found, delete is idempotent", id);
+                return;
             }
             customerRepository.deleteById(id);
-        } catch (ResourceNotFoundException ex) {
-            throw ex;
         } catch (Exception ex) {
             log.error("Error deleting customer", ex);
             throw new ServiceUnavailableException("Failed to delete customer", ex);
@@ -76,6 +111,7 @@ public class CustomerService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(value = "customers", key = "#id", unless = "#result == null || #result.isEmpty()")
     public Optional<Customer> findCustomerById(Integer id) {
         if (id == null || id <= 0) {
             throw new IllegalArgumentException("Invalid customer ID");
@@ -94,7 +130,7 @@ public class CustomerService {
     }
 
     // Fallback methods
-    public Customer saveFallback(Customer customer, Exception ex) {
+    public Customer saveFallback(Customer customer, String idempotencyKey, Exception ex) {
         log.error("Circuit breaker triggered for save operation", ex);
         throw new ServiceUnavailableException("Service temporarily unavailable. Please try again later.");
     }

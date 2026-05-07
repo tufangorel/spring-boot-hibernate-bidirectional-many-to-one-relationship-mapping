@@ -1,4 +1,9 @@
 spring:
+  cache:
+    type: caffeine
+    cache-names: customers, customerOrders, orderItems, customerByShippingAddress
+    caffeine:
+      spec: maximumSize=1000,expireAfterWrite=10m
   main:
     banner-mode: off
   servlet:
@@ -32,8 +37,11 @@ spring:
     console:
       enabled: true
       path: /h2
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
 
 server:
+  shutdown: graceful
   tomcat:
     accesslog:
       enabled: true

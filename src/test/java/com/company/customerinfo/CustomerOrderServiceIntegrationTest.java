@@ -7,10 +7,13 @@ import com.company.customerinfo.model.OrderItem;
 import com.company.customerinfo.model.ShippingAddress;
 import com.company.customerinfo.service.CustomerOrderService;
 import com.company.customerinfo.service.CustomerService;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.time.LocalDateTime;
@@ -18,14 +21,26 @@ import java.time.LocalDateTime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 
-@SpringBootTest(classes = CustomerInfoApplication.class)
+@SpringBootTest(
+        classes = CustomerInfoApplication.class,
+        properties = "spring.datasource.url=jdbc:h2:mem:cust_order_service_it;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE"
+)
 @ActiveProfiles("dev")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 public class CustomerOrderServiceIntegrationTest {
 
     @Autowired
     private CustomerService customerService;
     @Autowired
     private CustomerOrderService customerOrderService;
+
+    @Autowired
+    private CircuitBreakerRegistry circuitBreakerRegistry;
+
+    @BeforeEach
+    void resetResilienceState() {
+        circuitBreakerRegistry.circuitBreaker("customerService").reset();
+    }
 
     @Order(1)
     @Test
@@ -41,7 +56,7 @@ public class CustomerOrderServiceIntegrationTest {
         shippingAddress.setStreetName("KaleSokak");
         customer.setShippingAddress(shippingAddress);
 
-        Customer savedCustomerRecord = customerService.save(customer);
+        Customer savedCustomerRecord = customerService.save(customer, "test-customer-key-3");
         assertThat( savedCustomerRecord.getShippingAddress() != null);
 
         CustomerOrder customerOrder = new CustomerOrder();
@@ -59,8 +74,65 @@ public class CustomerOrderServiceIntegrationTest {
         customerOrder.addOrderItem(orderItem1);
         customerOrder.addOrderItem(orderItem2);
 
-        CustomerOrder savedCustomerOrder = customerOrderService.save(customerOrder);
+        CustomerOrder savedCustomerOrder = customerOrderService.save(customerOrder, "test-order-key-1");
 
-        assertThat( savedCustomerOrder != null);
+        assertThat(savedCustomerOrder).isNotNull();
+    }
+
+    @Order(2)
+    @Test
+    public void saveCustomerOrderWithIdempotencyKeyTest() {
+
+        Customer customer = new Customer();
+        customer.setName("name2");
+        customer.setAge(30);
+
+        ShippingAddress shippingAddress = new ShippingAddress();
+        shippingAddress.setCountry("TR");
+        shippingAddress.setCity("Istanbul");
+        shippingAddress.setStreetName("Barbaros");
+        customer.setShippingAddress(shippingAddress);
+
+        Customer savedCustomerRecord = customerService.save(customer, "test-customer-key-4");
+        assertThat(savedCustomerRecord).isNotNull();
+
+        CustomerOrder firstOrder = new CustomerOrder();
+        firstOrder.setCustomer(savedCustomerRecord);
+        firstOrder.setOrderDate(LocalDateTime.now());
+        firstOrder.setTitle("Order-002");
+
+        OrderItem orderItem1 = new OrderItem();
+        orderItem1.setQuantity(1);
+        orderItem1.setCustomerOrder(firstOrder);
+        OrderItem orderItem2 = new OrderItem();
+        orderItem2.setQuantity(2);
+        orderItem2.setCustomerOrder(firstOrder);
+
+        firstOrder.addOrderItem(orderItem1);
+        firstOrder.addOrderItem(orderItem2);
+
+        String idempotencyKey = "customer-order-key-123";
+        CustomerOrder savedFirst = customerOrderService.save(firstOrder, idempotencyKey);
+
+        CustomerOrder secondOrder = new CustomerOrder();
+        secondOrder.setCustomer(savedCustomerRecord);
+        secondOrder.setOrderDate(savedFirst.getOrderDate());
+        secondOrder.setTitle("Order-002");
+
+        OrderItem secondItem1 = new OrderItem();
+        secondItem1.setQuantity(1);
+        secondItem1.setCustomerOrder(secondOrder);
+        OrderItem secondItem2 = new OrderItem();
+        secondItem2.setQuantity(2);
+        secondItem2.setCustomerOrder(secondOrder);
+
+        secondOrder.addOrderItem(secondItem1);
+        secondOrder.addOrderItem(secondItem2);
+
+        CustomerOrder savedSecond = customerOrderService.save(secondOrder, idempotencyKey);
+
+        assertThat(savedSecond).isNotNull();
+        assertThat(savedSecond.getId()).isEqualTo(savedFirst.getId());
+        assertThat(savedSecond.getTitle()).isEqualTo(savedFirst.getTitle());
     }
 }

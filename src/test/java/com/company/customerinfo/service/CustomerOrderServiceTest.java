@@ -3,6 +3,7 @@ package com.company.customerinfo.service;
 import com.company.customerinfo.model.CustomerOrder;
 import com.company.customerinfo.model.OrderItem;
 import com.company.customerinfo.repository.CustomerOrderRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -21,9 +22,16 @@ class CustomerOrderServiceTest {
 
     @Mock
     private CustomerOrderRepository customerOrderRepository;
+    @Mock
+    private IdempotencyService idempotencyService;
 
     @InjectMocks
     private CustomerOrderService customerOrderService;
+
+    @BeforeEach
+    void wireSelf() {
+        customerOrderService.setSelf(customerOrderService);
+    }
 
     @Test
     void saveAssignsBackReferenceForAllOrderItems() {
@@ -44,10 +52,10 @@ class CustomerOrderServiceTest {
 
     @Test
     void findAllReturnsRepositoryResult() {
-        when(customerOrderRepository.findAll()).thenReturn(Collections.emptyList());
+        when(customerOrderRepository.findAllWithAssociations()).thenReturn(Collections.emptyList());
 
         assertThat(customerOrderService.findAll()).isEmpty();
-        verify(customerOrderRepository).findAll();
+        verify(customerOrderRepository).findAllWithAssociations();
     }
 
     @Test
@@ -63,11 +71,11 @@ class CustomerOrderServiceTest {
     void findByIdReturnsRepositoryResult() {
         CustomerOrder order = new CustomerOrder();
         order.setId(6);
-        when(customerOrderRepository.findById(6)).thenReturn(Optional.of(order));
+        when(customerOrderRepository.findByIdWithAssociations(6)).thenReturn(Optional.of(order));
 
         Optional<CustomerOrder> result = customerOrderService.findById(6);
 
         assertThat(result).contains(order);
-        verify(customerOrderRepository).findById(6);
+        verify(customerOrderRepository).findByIdWithAssociations(6);
     }
 }
