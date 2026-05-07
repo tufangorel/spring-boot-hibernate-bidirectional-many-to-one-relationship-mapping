@@ -60,10 +60,20 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+      group:
+        readiness:
+          include: readinessState,readinessDb
   metrics:
     export:
       prometheus:
         enabled: true
+
+app:
+  health:
+    db:
+      max-latency-ms: 200
+      max-active-ratio: 0.9
+      max-waiting-threads: 0
 
 resilience4j:
   circuitbreaker:

@@ -15,6 +15,8 @@ A comprehensive Spring Boot application demonstrating Hibernate bidirectional ma
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Usage](#usage)
+- [Configuration](#configuration)
+- [Caching](#caching)
 - [API Documentation](#api-documentation)
 - [Testing](#testing)
 - [Project Structure](#project-structure)
@@ -30,9 +32,13 @@ A comprehensive Spring Boot application demonstrating Hibernate bidirectional ma
 - **Resilience4j**: Circuit breaker, retry, time limiter, and bulkhead patterns for service reliability
 - **Global Error Handling**: Centralized exception handling with standardized HTTP error responses
 - **Validation**: Jakarta Bean Validation for request payloads and domain constraints
-- **Spring Boot Actuator**: Health checks and application monitoring
+- **Spring Boot Actuator**: Health checks, metrics, info, and Prometheus-compatible metrics export
 - **Comprehensive Testing**: Unit tests, integration tests, and Layer 2 smoke tests
 - **Containerized Testing**: Docker-based smoke tests for production-like validation
+- **Idempotent order creation**: Optional `Idempotency-Key` header on `POST /customerorder/save` stores a mapping in `idempotency_record` so retries return the same saved order instead of creating duplicates
+- **Response caching**: Spring Cache with Caffeine on read paths in the service layer (`@Cacheable` / `@CacheEvict`), with cache-friendly JPA fetch queries for customer orders and shipping-address lookups
+- **Graceful shutdown**: Spring Boot graceful server shutdown with lifecycle timeout and application shutdown hooks for predictable stop behavior
+- **Stabilized integration tests**: Isolated Spring test contexts, per-test circuit-breaker reset, and dedicated in-memory H2 URLs for flaky integration classes
 
 ## 🏗️ Architecture
 
@@ -50,6 +56,10 @@ CustomerOrder (1) ────→ (Many) OrderItem
 - Cascade operations for data persistence
 - Lazy/Eager loading configurations
 
+### Idempotency (customer orders)
+
+Create-order requests may send an optional HTTP header `Idempotency-Key` (non-blank string, up to 128 characters in storage). The first successful save persists the new order id keyed by `(idempotency_key, entity_type)` in the `idempotency_record` table. Later requests with the same key for customer orders load that order from the database and return it with no second insert. If the header is omitted or blank, behavior is unchanged from a normal create.
+
 ### ER Diagram
 
 ![Entity Relationship Diagram](doc/many_to_one_er_diagram.png)
@@ -65,8 +75,10 @@ CustomerOrder (1) ────→ (Many) OrderItem
 - **Build Tool**: Maven 3.9.11
 - **Documentation**: SpringDoc OpenAPI (Swagger)
 - **Testing**: JUnit 5, Spring Boot Test
-- **Monitoring**: Spring Boot Actuator
+- **Monitoring**: Spring Boot Actuator (health, metrics, info) and Micrometer Prometheus registry
 - **Logging**: Logback
+- **SQL observability**: datasource-proxy (JDBC proxy for SQL logging and diagnostics)
+- **Caching**: Spring Cache abstraction backed by **Caffeine** (`spring-boot-starter-cache` + `caffeine`)
 - **Containerization**: Docker & Docker Compose
 
 ## 📋 Prerequisites
@@ -91,7 +103,7 @@ CustomerOrder (1) ────→ (Many) OrderItem
 
 3. **Run the application**
    ```bash
-   ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+   ./mvnw spring-boot:run "-Dspring-boot.run.profiles=dev"
    ```
 
 The application will start on `http://localhost:8080/customer-info`
@@ -100,18 +112,21 @@ The application will start on `http://localhost:8080/customer-info`
 
 ### Application Profiles
 
-- **dev**: Development profile with detailed logging
+- **dev**: Development profile with detailed logging; **Spring Cache is disabled** (`spring.cache.type=none`) so integration tests stay deterministic
 - **test**: Testing profile with test-specific configurations
+- **default** (no profile, or non-dev): Caffeine cache settings from `application.yml` apply
 
 ### Accessing the Application
 
-- **Swagger UI**: http://localhost:8080/customer-info/swagger-ui/
+- **Swagger UI**: http://localhost:8080/customer-info/swagger-ui/index.html
 - **H2 Console**: http://localhost:8080/customer-info/h2/
 - **Health Check**: http://localhost:8080/customer-info/actuator/health
+- **Readiness Health Check**: http://localhost:8080/customer-info/actuator/health/readiness
+- **Prometheus scrape**: http://localhost:8080/customer-info/actuator/prometheus
 
 ## ⚙️ Configuration
 
-The application uses `src/main/resources/application.yml` to configure the servlet context path, H2 datasource, JPA settings, logging, actuator endpoints, and Resilience4j policies. The default context path is `/customer-info`.
+The application uses `src/main/resources/application.yml` to configure the servlet context path, H2 datasource, JPA settings, logging, actuator endpoints, Resilience4j policies, graceful shutdown behavior, and Caffeine-backed Spring Cache. The default context path is `/customer-info`.
 
 The `resilience4j` configuration includes:
 - `circuitbreaker` for failure isolation
@@ -119,12 +134,65 @@ The `resilience4j` configuration includes:
 - `timelimiter` for request timeouts
 - `bulkhead` for concurrent call limits
 
+Actuator web endpoints exposed by default in `application.yml` include `health`, `metrics`, `prometheus`, and `info`.
+
+### Detailed DB Readiness Health
+
+The readiness group includes a custom `readinessDb` indicator with deep database checks:
+
+- Executes `SELECT 1` and reports `queryLatencyMs`
+- Adds Hikari pool details when available (`active`, `idle`, `total`, `max`, `threadsAwaitingConnection`)
+- Applies configurable degradation thresholds under `app.health.db.*`
+
+Threshold configuration in `application.yml`:
+
+- `app.health.db.max-latency-ms` (default `200`)
+- `app.health.db.max-active-ratio` (default `0.9`)
+- `app.health.db.max-waiting-threads` (default `0`)
+
+Health states:
+
+- `UP`: query succeeds and thresholds are within limits
+- `OUT_OF_SERVICE`: query succeeds but one or more thresholds are exceeded (`reasons` field explains why)
+- `DOWN`: query or connection fails
+
+Example readiness endpoints:
+
+- `GET /customer-info/actuator/health/readiness`
+- `GET /customer-info/actuator/health`
+
+### Graceful Shutdown
+
+Graceful shutdown is enabled for both `.yml` and `.properties` configuration paths:
+
+- `server.shutdown=graceful`
+- `spring.lifecycle.timeout-per-shutdown-phase=30s`
+
+On shutdown, `GracefulShutdownListener` logs both shutdown start (`ContextClosedEvent`) and resource release completion (`@PreDestroy`).
+
 ### H2 Database Configuration
 
 - **URL**: `jdbc:h2:mem:cust`
 - **Username**: `sa`
 - **Password**: `123456`
 - **Driver**: `org.h2.Driver`
+
+## Caching
+
+Caching is applied in **services** (not controllers): `@Cacheable` on read methods and `@CacheEvict` (including `@Caching`) after writes so lists and detail views stay consistent.
+
+| Cache name | Backed data | Typical invalidation |
+|------------|-------------|----------------------|
+| `customers` | `CustomerService.findAll`, `findCustomerById` | Customer save/delete (and idempotent customer save) |
+| `customerOrders` | `CustomerOrderService.findAll`, `findById` | Customer order save/delete; order item save/delete |
+| `orderItems` | `OrderItemService.findAll`, `findById` | Order item save/delete; customer order save/delete |
+| `customerByShippingAddress` | `ShippingAddressService.findCustomerByShippingAddressID` | Customer save/delete |
+
+**Defaults** (`application.yml`): `spring.cache.type=caffeine`, up to **1000 entries** per cache, **10 minutes** time-to-live after write (`expireAfterWrite`). Cache names are declared explicitly under `spring.cache.cache-names`.
+
+**JPA and JSON**: Customer orders are loaded with **join-fetch** repository methods (`findAllWithAssociations`, `findByIdWithAssociations`) so cached `CustomerOrder` graphs include `orderItems`, `customer`, and `shippingAddress` where needed. The shipping-address lookup uses a `Customer`-root fetch query so Hibernate 6 join rules are satisfied.
+
+**Profiles**: The **`dev`** profile sets `spring.cache.type=none` in `application-dev.properties` (integration tests use `@ActiveProfiles("dev")`). **Test** `application*.properties` also set `spring.cache.type=none` so Surefire runs do not depend on cache state. Run **without** the `dev` profile (default `application.yml`) to exercise in-memory caching locally.
 
 ## 📚 API Documentation
 
@@ -164,6 +232,13 @@ DELETE /customer-info/customer/delete/{id}
 ### Order Management
 
 #### Create Customer Order with Items
+
+Optional header for safe retries (same body + same key returns the first persisted order):
+
+```http
+Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
+```
+
 ```bash
 POST /customer-info/customerorder/save
 Content-Type: application/json
@@ -249,6 +324,20 @@ Run only integration tests:
 ./mvnw test -Dtest="*IntegrationTest"
 ```
 
+Integration tests include, among others, `CustomerOrderIdempotencyIntegrationTest` (verifies duplicate `POST` with the same `Idempotency-Key`), `CustomerOrderServiceIntegrationTest`, `CustomerServiceIntegrationTest`, and `DatasourceProxyListenerIntegrationTest`.
+
+Caching is turned off under the `dev` profile and in shared test `application*.properties` (`spring.cache.type=none`), so these tests always hit the database unless you change that configuration.
+
+Integration test stability improvements:
+
+- Spring context isolation with `@DirtiesContext(classMode = AFTER_EACH_TEST_METHOD)` on core integration suites
+- Explicit `CircuitBreakerRegistry` reset in `@BeforeEach` for `customerService`
+- Dedicated H2 in-memory URLs per integration class to avoid shared schema/state side effects
+
+Graceful shutdown coverage:
+
+- `GracefulShutdownIntegrationTest` validates graceful shutdown properties and shutdown listener lifecycle logs during context close.
+
 Run with coverage:
 ```bash
 ./mvnw test jacoco:report
@@ -299,9 +388,9 @@ spring-boot-hibernate-bidirectional-many-to-one-relationship-mapping/
 │   │   │   └── com/company/customerinfo/
 │   │   │       ├── config/         # Configuration classes
 │   │   │       ├── controller/     # REST controllers
-│   │   │       ├── model/          # JPA entities
-│   │   │       ├── repository/     # Data repositories
-│   │   │       ├── service/        # Business logic
+│   │   │       ├── model/          # JPA entities (including IdempotencyRecord)
+│   │   │       ├── repository/     # Data repositories (including IdempotencyRecordRepository)
+│   │   │       ├── service/        # Business logic, Resilience4j, @Cacheable / @CacheEvict
 │   │   │       └── CustomerInfoApplication.java
 │   │   └── resources/              # Application properties
 │   └── test/                       # Unit and integration tests
