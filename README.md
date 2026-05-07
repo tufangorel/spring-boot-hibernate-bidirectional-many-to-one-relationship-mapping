@@ -121,6 +121,7 @@ The application will start on `http://localhost:8080/customer-info`
 - **Swagger UI**: http://localhost:8080/customer-info/swagger-ui/index.html
 - **H2 Console**: http://localhost:8080/customer-info/h2/
 - **Health Check**: http://localhost:8080/customer-info/actuator/health
+- **Readiness Health Check**: http://localhost:8080/customer-info/actuator/health/readiness
 - **Prometheus scrape**: http://localhost:8080/customer-info/actuator/prometheus
 
 ## ⚙️ Configuration
@@ -134,6 +135,31 @@ The `resilience4j` configuration includes:
 - `bulkhead` for concurrent call limits
 
 Actuator web endpoints exposed by default in `application.yml` include `health`, `metrics`, `prometheus`, and `info`.
+
+### Detailed DB Readiness Health
+
+The readiness group includes a custom `readinessDb` indicator with deep database checks:
+
+- Executes `SELECT 1` and reports `queryLatencyMs`
+- Adds Hikari pool details when available (`active`, `idle`, `total`, `max`, `threadsAwaitingConnection`)
+- Applies configurable degradation thresholds under `app.health.db.*`
+
+Threshold configuration in `application.yml`:
+
+- `app.health.db.max-latency-ms` (default `200`)
+- `app.health.db.max-active-ratio` (default `0.9`)
+- `app.health.db.max-waiting-threads` (default `0`)
+
+Health states:
+
+- `UP`: query succeeds and thresholds are within limits
+- `OUT_OF_SERVICE`: query succeeds but one or more thresholds are exceeded (`reasons` field explains why)
+- `DOWN`: query or connection fails
+
+Example readiness endpoints:
+
+- `GET /customer-info/actuator/health/readiness`
+- `GET /customer-info/actuator/health`
 
 ### Graceful Shutdown
 
