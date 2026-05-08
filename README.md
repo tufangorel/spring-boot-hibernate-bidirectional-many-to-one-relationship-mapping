@@ -201,6 +201,8 @@ Caching is applied in **services** (not controllers): `@Cacheable` on read metho
 
 Per-user rate limiting is enforced at the **service layer** with [Bucket4j](https://github.com/bucket4j/bucket4j) token buckets. The `RateLimitAspect` is ordered at `Ordered.HIGHEST_PRECEDENCE`, so a rejected call short-circuits **before** any other advice runs (transactions, caching, circuit breakers, retries, validation).
 
+> A standalone design document with rationale, full Mermaid diagrams (architecture, sequence, bucket-resolution flow, class diagram), the "Why Bucket4j" comparison, and operational notes lives in [`doc/rate-limiting.md`](doc/rate-limiting.md).
+
 ### How a request is identified
 
 A `UserKeyFilter` registered with `Ordered.HIGHEST_PRECEDENCE` populates a `ThreadLocal` `UserContext` at the start of every request via `DefaultUserKeyResolver`:
