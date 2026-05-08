@@ -3,6 +3,7 @@ package com.company.customerinfo.service;
 
 import com.company.customerinfo.exception.ServiceUnavailableException;
 import com.company.customerinfo.model.Customer;
+import com.company.customerinfo.ratelimit.RateLimited;
 import com.company.customerinfo.repository.CustomerRepository;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
@@ -41,6 +42,7 @@ public class CustomerService {
         return self.save(customer, null);
     }
 
+    @RateLimited(key = "customer.write")
     @Transactional
     @Caching(evict = {
             @CacheEvict(value = "customers", allEntries = true),
@@ -72,6 +74,7 @@ public class CustomerService {
         }
     }
 
+    @RateLimited(key = "customer.read")
     @Transactional(readOnly = true)
     @Cacheable(value = "customers", key = "'all'", sync = true)
     @CircuitBreaker(name = "customerService", fallbackMethod = "findAllFallback")
@@ -86,6 +89,7 @@ public class CustomerService {
         }
     }
 
+    @RateLimited(key = "customer.write")
     @Transactional
     @Caching(evict = {
             @CacheEvict(value = "customers", allEntries = true),
@@ -110,6 +114,7 @@ public class CustomerService {
         }
     }
 
+    @RateLimited(key = "customer.read")
     @Transactional(readOnly = true)
     @Cacheable(value = "customers", key = "#id", unless = "#result == null || #result.isEmpty()")
     public Optional<Customer> findCustomerById(Integer id) {

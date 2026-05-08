@@ -82,6 +82,23 @@ app:
       max-latency-ms: 200
       max-active-ratio: 0.9
       max-waiting-threads: 0
+  rate-limit:
+    enabled: true
+    cache:
+      max-size: 100000
+    default:
+      capacity: 60
+      refill-tokens: 60
+      refill-period-seconds: 60
+    profiles:
+      write:
+        capacity: 20
+        refill-tokens: 20
+        refill-period-seconds: 60
+      read:
+        capacity: 100
+        refill-tokens: 100
+        refill-period-seconds: 60
 
 resilience4j:
   circuitbreaker:

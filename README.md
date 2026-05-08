@@ -17,6 +17,7 @@ A comprehensive Spring Boot application demonstrating Hibernate bidirectional ma
 - [Usage](#usage)
 - [Configuration](#configuration)
 - [Caching](#caching)
+- [Rate Limiting](#rate-limiting)
 - [API Documentation](#api-documentation)
 - [Testing](#testing)
 - [Project Structure](#project-structure)
@@ -37,6 +38,7 @@ A comprehensive Spring Boot application demonstrating Hibernate bidirectional ma
 - **Containerized Testing**: Docker-based smoke tests for production-like validation
 - **Idempotent order creation**: Optional `Idempotency-Key` header on `POST /customerorder/save` stores a mapping in `idempotency_record` so retries return the same saved order instead of creating duplicates
 - **Response caching**: Spring Cache with Caffeine on read paths in the service layer (`@Cacheable` / `@CacheEvict`), with cache-friendly JPA fetch queries for customer orders and shipping-address lookups
+- **Per-user rate limiting**: Bucket4j token buckets enforced at the service layer via `@RateLimited` and a Spring AOP aspect ordered at `HIGHEST_PRECEDENCE`, so rejected calls short-circuit before any business logic, transactions, or other advice runs; violations return HTTP 429 with a `Retry-After` header
 - **Graceful shutdown**: Spring Boot graceful server shutdown with lifecycle timeout and application shutdown hooks for predictable stop behavior
 - **Stabilized integration tests**: Isolated Spring test contexts, per-test circuit-breaker reset, and dedicated in-memory H2 URLs for flaky integration classes
 
@@ -79,6 +81,7 @@ Create-order requests may send an optional HTTP header `Idempotency-Key` (non-bl
 - **Logging**: Logback
 - **SQL observability**: datasource-proxy (JDBC proxy for SQL logging and diagnostics)
 - **Caching**: Spring Cache abstraction backed by **Caffeine** (`spring-boot-starter-cache` + `caffeine`)
+- **Rate limiting**: [Bucket4j](https://github.com/bucket4j/bucket4j) token buckets (`bucket4j-core`) cached by Caffeine and applied through Spring AOP
 - **Containerization**: Docker & Docker Compose
 
 ## 📋 Prerequisites
@@ -193,6 +196,108 @@ Caching is applied in **services** (not controllers): `@Cacheable` on read metho
 **JPA and JSON**: Customer orders are loaded with **join-fetch** repository methods (`findAllWithAssociations`, `findByIdWithAssociations`) so cached `CustomerOrder` graphs include `orderItems`, `customer`, and `shippingAddress` where needed. The shipping-address lookup uses a `Customer`-root fetch query so Hibernate 6 join rules are satisfied.
 
 **Profiles**: The **`dev`** profile sets `spring.cache.type=none` in `application-dev.properties` (integration tests use `@ActiveProfiles("dev")`). **Test** `application*.properties` also set `spring.cache.type=none` so Surefire runs do not depend on cache state. Run **without** the `dev` profile (default `application.yml`) to exercise in-memory caching locally.
+
+## Rate Limiting
+
+Per-user rate limiting is enforced at the **service layer** with [Bucket4j](https://github.com/bucket4j/bucket4j) token buckets. The `RateLimitAspect` is ordered at `Ordered.HIGHEST_PRECEDENCE`, so a rejected call short-circuits **before** any other advice runs (transactions, caching, circuit breakers, retries, validation).
+
+### How a request is identified
+
+A `UserKeyFilter` registered with `Ordered.HIGHEST_PRECEDENCE` populates a `ThreadLocal` `UserContext` at the start of every request via `DefaultUserKeyResolver`:
+
+1. `X-User-Id` header (trimmed) → `user:<id>`
+2. else first hop of `X-Forwarded-For` → `ip:<address>`
+3. else `HttpServletRequest.getRemoteAddr()` → `ip:<address>`
+4. else no key resolved (the aspect treats the caller as `anonymous`)
+
+The filter clears `UserContext` after the request completes.
+
+### Annotating a service method
+
+Methods are annotated with `@RateLimited`. The annotation supports a logical bucket key plus optional per-method overrides:
+
+```java
+@RateLimited(key = "customer.write")
+public Customer save(Customer customer, String idempotencyKey) { ... }
+
+@RateLimited(key = "customer.read")
+public List<Customer> findAll() { ... }
+
+@RateLimited(key = "report.export", capacity = 5, refillTokens = 5, refillPeriodSeconds = 300)
+public byte[] export() { ... }
+```
+
+If `key` is empty the bucket id falls back to `<SimpleClassName>#<methodName>`. The annotation is applied across the four service classes:
+
+| Service | Methods | Bucket key |
+|---|---|---|
+| `CustomerService` | `save`, `deleteCustomerById` | `customer.write` |
+| `CustomerService` | `findAll`, `findCustomerById` | `customer.read` |
+| `CustomerOrderService` | `save`, `deleteCustomerOrderById` | `customerOrder.write` |
+| `CustomerOrderService` | `findAll`, `findById` | `customerOrder.read` |
+| `OrderItemService` | `save`, `deleteOrderItemById` | `orderItem.write` |
+| `OrderItemService` | `findAll`, `findById` | `orderItem.read` |
+| `ShippingAddressService` | `findCustomerByShippingAddressID` | `shippingAddress.read` |
+
+### Bucket sizing
+
+When the aspect resolves the limit it checks, in order:
+
+1. Per-annotation values (`capacity`, `refillTokens`, `refillPeriodSeconds`) when greater than 0
+2. A named profile under `app.rate-limit.profiles.<suffix>`, where `<suffix>` is the substring after the last `.` of the key (e.g. `customer.write` → `write`)
+3. The global `app.rate-limit.default` profile
+
+Buckets are stored in a Caffeine cache keyed by `<userKey>|<bucketId>` so each user gets an isolated bucket per logical operation; the cache is bounded by `app.rate-limit.cache.max-size`.
+
+### Configuration
+
+```yaml
+app:
+  rate-limit:
+    enabled: true
+    cache:
+      max-size: 100000        # max cached buckets across all (user, bucket) pairs
+    default:
+      capacity: 60
+      refill-tokens: 60
+      refill-period-seconds: 60
+    profiles:
+      write:
+        capacity: 20
+        refill-tokens: 20
+        refill-period-seconds: 60
+      read:
+        capacity: 100
+        refill-tokens: 100
+        refill-period-seconds: 60
+```
+
+Set `app.rate-limit.enabled=false` to disable enforcement entirely; the aspect short-circuits to `proceed()` without consulting any bucket.
+
+### Response when the limit is exceeded
+
+`RateLimitExceededException` is mapped by `GlobalExceptionHandler` to `HTTP 429 Too Many Requests` with a `Retry-After` header (seconds until the next token is available):
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 12
+Content-Type: application/json
+
+{
+  "timestamp": "2026-05-08T12:00:00",
+  "status": 429,
+  "error": "Too Many Requests",
+  "message": "Rate limit exceeded for bucket: customer.write",
+  "retryAfterSeconds": 12
+}
+```
+
+### Tests
+
+- `RateLimitAspectTest` (8 unit tests) — token consumption, per-user isolation, `enabled=false` short-circuit, anonymous-user fallback, per-annotation overrides, named-profile resolution, blank-key signature fallback.
+- `UserKeyResolverTest` (7 unit tests) — `null` request, `X-User-Id` precedence and trimming, `X-Forwarded-For` first-hop, blank/missing forwarded header, missing `RemoteAddr`, all-missing.
+- `RateLimitExceededExceptionTest` (1 unit test) — exposes `userKey`, `bucketId`, and `retryAfterNanos` accessors.
+- `RateLimitIntegrationTest` (3 end-to-end tests) — boots the full Spring context and verifies HTTP 429 with `Retry-After` after `capacity + 1` requests, isolation between two `X-User-Id` values, and IP-based bucketing when no header is present.
 
 ## 📚 API Documentation
 

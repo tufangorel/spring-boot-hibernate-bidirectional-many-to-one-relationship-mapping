@@ -1,8 +1,10 @@
 package com.company.customerinfo.config;
 
+import com.company.customerinfo.exception.RateLimitExceededException;
 import com.company.customerinfo.exception.ResourceNotFoundException;
 import com.company.customerinfo.exception.ServiceUnavailableException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -13,6 +15,7 @@ import org.springframework.web.context.request.WebRequest;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -48,6 +51,22 @@ public class GlobalExceptionHandler {
             ServiceUnavailableException ex, WebRequest request) {
         log.error("Service unavailable: {}", ex.getMessage());
         return buildErrorResponse(HttpStatus.SERVICE_UNAVAILABLE, "Service unavailable", ex.getMessage());
+    }
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleRateLimitExceeded(
+            RateLimitExceededException ex, WebRequest request) {
+        long retryAfterSeconds = Math.max(1L, TimeUnit.NANOSECONDS.toSeconds(ex.getRetryAfterNanos()));
+        log.warn("Rate limit exceeded for bucket '{}' (retryAfterSeconds={})", ex.getBucketId(), retryAfterSeconds);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.TOO_MANY_REQUESTS.value());
+        body.put("error", "Too Many Requests");
+        body.put("message", "Rate limit exceeded for bucket: " + ex.getBucketId());
+        body.put("retryAfterSeconds", retryAfterSeconds);
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, Long.toString(retryAfterSeconds))
+                .body(body);
     }
 
     @ExceptionHandler(Exception.class)
