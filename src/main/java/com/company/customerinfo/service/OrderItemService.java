@@ -3,6 +3,7 @@ package com.company.customerinfo.service;
 
 import com.company.customerinfo.exception.ServiceUnavailableException;
 import com.company.customerinfo.model.OrderItem;
+import com.company.customerinfo.ratelimit.RateLimited;
 import com.company.customerinfo.repository.OrderItemRepository;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
@@ -41,6 +42,7 @@ public class OrderItemService {
         return self.save(orderItem, null);
     }
 
+    @RateLimited(key = "orderItem.write")
     @Transactional
     @Caching(evict = {
             @CacheEvict(value = "orderItems", allEntries = true),
@@ -72,6 +74,7 @@ public class OrderItemService {
         }
     }
 
+    @RateLimited(key = "orderItem.read")
     @Transactional(readOnly = true)
     @Cacheable(value = "orderItems", key = "#id", unless = "#result == null || #result.isEmpty()")
     public Optional<OrderItem> findById(Integer id) {
@@ -91,6 +94,7 @@ public class OrderItemService {
         }
     }
 
+    @RateLimited(key = "orderItem.read")
     @Transactional(readOnly = true)
     @Cacheable(value = "orderItems", key = "'all'", sync = true)
     @CircuitBreaker(name = "customerService", fallbackMethod = "findAllFallback")
@@ -105,6 +109,7 @@ public class OrderItemService {
         }
     }
 
+    @RateLimited(key = "orderItem.write")
     @Transactional
     @Caching(evict = {
             @CacheEvict(value = "orderItems", allEntries = true),
