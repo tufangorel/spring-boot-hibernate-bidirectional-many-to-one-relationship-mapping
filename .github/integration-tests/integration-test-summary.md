@@ -3,10 +3,12 @@
 ## Overview
 Successfully implemented and executed Layer 2 smoke tests for the `spring-boot-hibernate-bidirectional-many-to-one-relationship-mapping` application. The tests validate the running Spring Boot application through HTTP requests inside a Docker Compose environment.
 
+**Execution details (commands, ports, teardown):** see the **Layer 2 Smoke Tests** section in the repository [`README.md`](../../README.md).
+
 ## Test Results
 - **Status**: ✅ PASSED
 - **Execution Time**: ~5 minutes (including Docker image build)
-- **Test Coverage**: 3 key endpoints validated
+- **Test Coverage**: Actuator health poll plus **3** REST calls (`POST` customer, `POST` customer order, `GET` order items)
 - **Environment**: Docker Compose with Spring Boot application
 
 ## Tests Added
@@ -33,8 +35,8 @@ Successfully implemented and executed Layer 2 smoke tests for the `spring-boot-h
 - **Result**: ✅ PASSED - Returns array of order items with quantity fields
 
 ## Artifacts Created
-- `.github/integration-tests/Dockerfile` - Multi-stage Docker build
-- `.github/integration-tests/docker-compose.yml` - Application container configuration
+- `.github/integration-tests/Dockerfile` — single-stage image: copies the Maven-built fat JAR into `eclipse-temurin:25-jdk-jammy` and runs `java -jar /app/app.jar`
+- `.github/integration-tests/docker-compose.yml` — service `customer-info-app`, `8080:8080`, `SPRING_PROFILES_ACTIVE=dev`, Compose healthcheck on `/customer-info/actuator/health`
 - `.github/integration-tests/run-layer2-tests.sh` - Unix runner script
 - `.github/integration-tests/run-layer2-tests.ps1` - Windows runner script
 - `.github/integration-tests/integration-test-plan.md` - Test planning document

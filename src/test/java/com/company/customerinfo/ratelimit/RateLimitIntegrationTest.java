@@ -1,6 +1,9 @@
 package com.company.customerinfo.ratelimit;
 
 import com.company.customerinfo.CustomerInfoApplication;
+import com.company.customerinfo.config.TracingHttp;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -35,6 +38,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class RateLimitIntegrationTest {
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     @LocalServerPort
     private int port;
 
@@ -46,7 +51,7 @@ class RateLimitIntegrationTest {
     }
 
     @Test
-    void returnsTooManyRequestsWhenSameUserExceedsWriteLimit() {
+    void returnsTooManyRequestsWhenSameUserExceedsWriteLimit() throws Exception {
         assertThat(postCustomer("rate-user", "Name One").getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(postCustomer("rate-user", "Name Two").getStatusCode()).isEqualTo(HttpStatus.CREATED);
 
@@ -55,19 +60,22 @@ class RateLimitIntegrationTest {
         assertThat(third.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
         assertThat(third.getHeaders().getFirst(HttpHeaders.RETRY_AFTER)).isNotBlank();
         assertThat(third.getBody()).contains("Rate limit exceeded for bucket: customer.write");
+        assertTooManyRequestsHasTracing(third);
     }
 
     @Test
-    void tracksBucketsIndependentlyPerUserHeader() {
+    void tracksBucketsIndependentlyPerUserHeader() throws Exception {
         assertThat(postCustomer("first-user", "First One").getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(postCustomer("first-user", "First Two").getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(postCustomer("first-user", "First Three").getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        ResponseEntity<String> firstUserThird = postCustomer("first-user", "First Three");
+        assertThat(firstUserThird.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        assertTooManyRequestsHasTracing(firstUserThird);
 
         assertThat(postCustomer("second-user", "Second One").getStatusCode()).isEqualTo(HttpStatus.CREATED);
     }
 
     @Test
-    void fallsBackToClientIpWhenUserHeaderIsMissing() {
+    void fallsBackToClientIpWhenUserHeaderIsMissing() throws Exception {
         assertThat(postCustomerWithoutUserHeader("Ip One").getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(postCustomerWithoutUserHeader("Ip Two").getStatusCode()).isEqualTo(HttpStatus.CREATED);
 
@@ -75,6 +83,14 @@ class RateLimitIntegrationTest {
 
         assertThat(third.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
         assertThat(third.getHeaders().getFirst(HttpHeaders.RETRY_AFTER)).isNotBlank();
+        assertTooManyRequestsHasTracing(third);
+    }
+
+    private void assertTooManyRequestsHasTracing(ResponseEntity<String> response) throws Exception {
+        String xTraceId = response.getHeaders().getFirst(TracingHttp.X_TRACE_ID);
+        assertThat(xTraceId).isNotBlank();
+        JsonNode root = OBJECT_MAPPER.readTree(response.getBody());
+        assertThat(root.path("traceId").asText()).isEqualToIgnoringCase(xTraceId);
     }
 
     private ResponseEntity<String> postCustomer(String userId, String name) {

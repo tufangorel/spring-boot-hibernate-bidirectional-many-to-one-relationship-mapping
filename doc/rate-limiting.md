@@ -101,7 +101,7 @@ same service was rejected as confusing.
 ```mermaid
 flowchart LR
     Client[HTTP client]
-    Filter[UserKeyFilter<br/>Ordered.HIGHEST_PRECEDENCE]
+    Filter[UserKeyFilter<br/>HIGHEST_PRECEDENCE + 10]
     Resolver[DefaultUserKeyResolver<br/>X-User-Id &rarr; X-Forwarded-For &rarr; RemoteAddr]
     Context[(UserContext<br/>ThreadLocal)]
     Controller[REST Controller]
@@ -128,9 +128,9 @@ flowchart LR
 
 Key invariants:
 
-- `UserKeyFilter` runs at `Ordered.HIGHEST_PRECEDENCE` so `UserContext` is
-  populated before any other filter, including Spring Security if it is ever
-  added later.
+- `UserKeyFilter` runs at `Ordered.HIGHEST_PRECEDENCE + 10` so Micrometer’s
+  HTTP observation filter opens the trace span first; `UserContext` is then
+  populated before controllers (and before Spring Security if it is ever added).
 - `RateLimitAspect` runs at `Ordered.HIGHEST_PRECEDENCE` so it is the
   outermost advice on the proxy chain; `@Transactional`, `@Cacheable`,
   `@CircuitBreaker`, `@Retry`, `@TimeLimiter`, and `@Bulkhead` all execute
@@ -258,7 +258,8 @@ Important subtleties:
 - **Limit values are baked into the bucket on first creation.** Changing
   `app.rate-limit.profiles.write.capacity` at runtime will *not* affect
   existing buckets — they keep the size they were built with. Buckets fall
-  out of the cache via `expireAfterAccess(1h)` (see `RateLimitConfig`) and
+  out of the cache after `expireAfterAccess` idle TTL (see `RateLimitConfig`;
+  TTL is derived from configured refill periods, at least 60 seconds) and
   are rebuilt with fresh values on the next access.
 - **Per-annotation overrides are field-by-field.** A method can override
   only `capacity` and inherit `refillTokens` / `refillPeriodSeconds` from a
@@ -340,9 +341,9 @@ app:
 | `app.rate-limit.profiles.<name>.refill-period-seconds` | — | Refill interval for that profile. |
 
 The `BucketRegistry` is configured in `RateLimitConfig` with
-`expireAfterAccess(Duration.ofHours(1))`, so any bucket that is idle for one
-hour is evicted and re-created on the next access (with the values that are
-in `application.yml` at that moment).
+`expireAfterAccess(ttl)` where `ttl` is `max(60s, 2 × maxRefillPeriod)` across
+the default and named profiles, `maximumSize` from `app.rate-limit.cache.max-size`,
+and bounded memory usage.
 
 ### Annotated services
 
@@ -440,8 +441,9 @@ the aspect untouched if a future authenticated resolver replaces the bean.
 
 ### `UserKeyFilter`
 
-`OncePerRequestFilter` registered with `Ordered.HIGHEST_PRECEDENCE`. The
-filter's `try { ... } finally { UserContext.clear(); }` block guarantees no
+`OncePerRequestFilter` registered with `Ordered.HIGHEST_PRECEDENCE + 10`
+(after Micrometer’s observation filter). The filter's
+`try { ... } finally { UserContext.clear(); }` block guarantees no
 `ThreadLocal` leak across requests.
 
 ### `UserContext`
@@ -472,8 +474,9 @@ proxy method.
 
 Wires `UserKeyResolver`, `BucketRegistry`, and registers the
 `UserKeyFilter` as a `FilterRegistrationBean` at
-`Ordered.HIGHEST_PRECEDENCE`. Builds the `BucketRegistry` from the
-configured `cache.max-size` and a one-hour idle TTL.
+`Ordered.HIGHEST_PRECEDENCE + 10` (after Micrometer HTTP observation).
+Builds the `BucketRegistry` from the configured `cache.max-size` and TTL
+derived from configured refill periods (see `RateLimitConfig`).
 
 ### `RateLimitExceededException`
 
@@ -491,6 +494,7 @@ envelope (timestamp / status / error / message + `retryAfterSeconds`).
 ```http
 HTTP/1.1 429 Too Many Requests
 Retry-After: 12
+X-Trace-Id: 6a01a08d44bad222069ae3b5d782f228
 Content-Type: application/json
 
 {
@@ -498,9 +502,14 @@ Content-Type: application/json
   "status": 429,
   "error": "Too Many Requests",
   "message": "Rate limit exceeded for bucket: customer.write",
-  "retryAfterSeconds": 12
+  "retryAfterSeconds": 12,
+  "traceId": "6a01a08d44bad222069ae3b5d782f228"
 }
 ```
+
+When Micrometer tracing has a current span, `GlobalExceptionHandler` also sets
+**`X-Trace-Id`** and the **`traceId`** field (same value) on this payload (see
+[doc/tracing.md](tracing.md)).
 
 - `Retry-After` is the **smallest integer number of seconds** that is at
   least `1` and at least the floor of `nanosToWaitForRefill / 1e9`. This is
@@ -528,11 +537,11 @@ flowchart LR
 | `RateLimitAspectTest` | Token consumption succeeds while tokens remain, throws after exhaustion, isolates buckets between users, short-circuits when `enabled=false`, falls back to `anonymous`, applies per-annotation overrides, resolves named profiles by suffix, derives bucket id from method signature when key is blank. |
 | `UserKeyResolverTest` | `null` request, `X-User-Id` precedence and trimming, `X-Forwarded-For` first hop with multiple commas, blank `X-Forwarded-For` falls through to `RemoteAddr`, missing `X-Forwarded-For` falls through to `RemoteAddr`, blank first hop falls through to `RemoteAddr`, all sources missing returns `Optional.empty()`. |
 | `RateLimitExceededExceptionTest` | All three accessors and the message contain the expected user key and bucket id. |
-| `RateLimitIntegrationTest` | Full Spring context: `capacity + 1` requests yield `429` with a non-zero `Retry-After`, two distinct `X-User-Id` values keep separate buckets, and a request with no header is bucketed by `RemoteAddr`. |
+| `RateLimitIntegrationTest` | Full Spring context: `capacity + 1` requests yield `429` with a non-zero `Retry-After`, two distinct `X-User-Id` values keep separate buckets, a request with no header is bucketed by `RemoteAddr`, and **`429`** responses include aligned **`traceId`** (JSON) and **`X-Trace-Id`** (header) when tracing is active. |
 
-Combined unit + integration coverage for the rate-limit feature classes is
-**93% instructions / 94% lines / 100% methods / 95% complexity / 85% branches**
-(measured with JaCoCo 0.8.13 against the 19 tests above).
+JaCoCo is configured in the root `pom.xml` (`jacoco-maven-plugin`); run
+`mvn clean test` and open `target/site/jacoco/index.html` for current coverage
+of `com.company.customerinfo.ratelimit` and related classes.
 
 ## Operational notes and future work
 
@@ -573,8 +582,8 @@ change.
   anyway, but a deliberately abusive client could time deploys to refresh
   their burst capacity early.
 - `app.rate-limit.profiles.*` updates only affect **new** buckets. To pick
-  up a tightened limit immediately, restart the JVM or wait one
-  `expireAfterAccess` window.
+  up a tightened limit immediately, restart the JVM or wait until idle
+  buckets expire per `expireAfterAccess` TTL in `RateLimitConfig`.
 - The current resolver does not understand RFC 7239 `Forwarded:`; it only
   reads `X-Forwarded-For`. Edge networks that strip `X-Forwarded-For`
   should rely on the application sitting behind a proxy that re-emits it,

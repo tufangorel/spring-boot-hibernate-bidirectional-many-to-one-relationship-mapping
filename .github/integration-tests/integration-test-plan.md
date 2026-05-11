@@ -16,22 +16,22 @@ This plan adds Layer 2 smoke tests for the `spring-boot-hibernate-bidirectional-
 - The existing in-memory H2 database configuration
 
 ## Strategy
-1. Build the application jar using the Maven wrapper.
-2. Use Docker Compose to launch the application container.
-3. Wait for the `/customer-info/actuator/health` endpoint to become available.
-4. Execute shell-based smoke tests using HTTP requests:
-   - health endpoint check
-   - save a customer
-   - save a customer order with multiple order items
-   - list order items and assert the expected response structure
-5. Tear down the Docker Compose environment after tests.
+1. Build the application JAR with the Maven wrapper: **`./mvnw`** (Unix) or **`mvnw.cmd`** (Windows) **`-DskipTests package`** (Surefire tests are skipped; the Docker image copies `target/...jar`).
+2. Use Docker Compose to build and launch the application container (`docker compose ... up -d --build`).
+3. Poll **`GET http://localhost:8080/customer-info/actuator/health`** from the host until HTTP succeeds or **~120 seconds** elapse, sleeping **3 seconds** between attempts.
+4. Run HTTP smoke requests against **`http://localhost:8080/customer-info`**:
+   - `POST /customer/save` (customer + shipping address)
+   - `POST /customerorder/save` (order with nested customer and multiple order items)
+   - `GET /orderitem/list` (assert order items with quantities)
+5. Tear down the Docker Compose environment (`docker compose ... down --remove-orphans`).
 
 ## Dependencies and Requirements
-- Docker must be installed and running.
-- Docker Compose capability must be available via `docker compose`.
-- `curl` must be available for the shell-based smoke script.
-- On Windows, PowerShell must be available.
-- The application uses the existing H2 database and does not require additional external services.
+- Docker must be installed and running (`docker info`).
+- Docker Compose V2 must be available as **`docker compose`**.
+- **Host port `8080` must be free** (compose maps `8080:8080`).
+- **`curl`** is used by the Unix runner for HTTP checks; the **Windows** runner uses **`Invoke-WebRequest`** (PowerShell). The **container** Compose healthcheck uses `curl` inside the image.
+- On Windows, PowerShell must be available to run `run-layer2-tests.ps1`.
+- The application uses the existing in-memory H2 database and does not require additional external services.
 
 ## Implementation Artifacts
 - `.github/integration-tests/Dockerfile`

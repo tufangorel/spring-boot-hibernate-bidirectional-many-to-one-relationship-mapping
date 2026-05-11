@@ -3,10 +3,14 @@ package com.company.customerinfo.config;
 import com.company.customerinfo.exception.RateLimitExceededException;
 import com.company.customerinfo.exception.ResourceNotFoundException;
 import com.company.customerinfo.exception.ServiceUnavailableException;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.lang.Nullable;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -20,7 +24,10 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @RestControllerAdvice
+@RequiredArgsConstructor
 public class GlobalExceptionHandler {
+
+    private final Tracer tracer;
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidationException(
@@ -64,8 +71,11 @@ public class GlobalExceptionHandler {
         body.put("error", "Too Many Requests");
         body.put("message", "Rate limit exceeded for bucket: " + ex.getBucketId());
         body.put("retryAfterSeconds", retryAfterSeconds);
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(HttpHeaders.RETRY_AFTER, Long.toString(retryAfterSeconds));
+        addTraceCorrelation(body, headers);
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                .header(HttpHeaders.RETRY_AFTER, Long.toString(retryAfterSeconds))
+                .headers(headers)
                 .body(body);
     }
 
@@ -84,6 +94,26 @@ public class GlobalExceptionHandler {
         body.put("status", status.value());
         body.put("error", error);
         body.put("message", message);
-        return new ResponseEntity<>(body, status);
+        HttpHeaders headers = new HttpHeaders();
+        addTraceCorrelation(body, headers);
+        return new ResponseEntity<>(body, headers, status);
+    }
+
+    private void addTraceCorrelation(Map<String, Object> body, HttpHeaders headers) {
+        String traceId = currentTraceId();
+        if (traceId != null) {
+            body.put("traceId", traceId);
+            headers.add(TracingHttp.X_TRACE_ID, traceId);
+        }
+    }
+
+    @Nullable
+    private String currentTraceId() {
+        Span span = tracer.currentSpan();
+        if (span == null || span.context() == null) {
+            return null;
+        }
+        String id = span.context().traceId();
+        return id != null && !id.isEmpty() ? id : null;
     }
 }

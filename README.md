@@ -18,6 +18,9 @@ A comprehensive Spring Boot application demonstrating Hibernate bidirectional ma
 - [Configuration](#configuration)
 - [Caching](#caching)
 - [Rate Limiting](#rate-limiting)
+- [Rate limiting design](doc/rate-limiting.md)
+- [Distributed tracing](#distributed-tracing)
+- [Tracing design document](doc/tracing.md)
 - [API Documentation](#api-documentation)
 - [Testing](#testing)
 - [Project Structure](#project-structure)
@@ -34,11 +37,11 @@ A comprehensive Spring Boot application demonstrating Hibernate bidirectional ma
 - **Global Error Handling**: Centralized exception handling with standardized HTTP error responses
 - **Validation**: Jakarta Bean Validation for request payloads and domain constraints
 - **Spring Boot Actuator**: Health checks, metrics, info, and Prometheus-compatible metrics export
-- **Comprehensive Testing**: Unit tests, integration tests, and Layer 2 smoke tests
+- **Comprehensive testing**: Unit tests, `*IntegrationTest` Spring Boot tests, optional **`TracingSmokeTest`** (HTTP tracing sanity check without the `IntegrationTest` name so it still runs when Surefire excludes `**/*IntegrationTest.java`), and Layer 2 container smoke tests
 - **Containerized Testing**: Docker-based smoke tests for production-like validation
 - **Idempotent order creation**: Optional `Idempotency-Key` header on `POST /customerorder/save` stores a mapping in `idempotency_record` so retries return the same saved order instead of creating duplicates
 - **Response caching**: Spring Cache with Caffeine on read paths in the service layer (`@Cacheable` / `@CacheEvict`), with cache-friendly JPA fetch queries for customer orders and shipping-address lookups
-- **Per-user rate limiting**: Bucket4j token buckets enforced at the service layer via `@RateLimited` and a Spring AOP aspect ordered at `HIGHEST_PRECEDENCE`, so rejected calls short-circuit before any business logic, transactions, or other advice runs; violations return HTTP 429 with a `Retry-After` header
+- **Distributed tracing (Micrometer + Brave)**: W3C `traceparent` propagation, `traceId` / `spanId` in logs, `X-Trace-Id` on JSON responses, and `traceId` on standardized error payloads
 - **Graceful shutdown**: Spring Boot graceful server shutdown with lifecycle timeout and application shutdown hooks for predictable stop behavior
 - **Stabilized integration tests**: Isolated Spring test contexts, per-test circuit-breaker reset, and dedicated in-memory H2 URLs for flaky integration classes
 
@@ -82,6 +85,7 @@ Create-order requests may send an optional HTTP header `Idempotency-Key` (non-bl
 - **SQL observability**: datasource-proxy (JDBC proxy for SQL logging and diagnostics)
 - **Caching**: Spring Cache abstraction backed by **Caffeine** (`spring-boot-starter-cache` + `caffeine`)
 - **Rate limiting**: [Bucket4j](https://github.com/bucket4j/bucket4j) token buckets (`bucket4j-core`) cached by Caffeine and applied through Spring AOP
+- **Tracing**: Spring Boot Micrometer Tracing with Brave (`spring-boot-micrometer-tracing-brave`, `micrometer-tracing-bridge-brave`); W3C propagation; no remote exporter in the default POM (add Zipkin/OTLP when you need a trace backend)
 - **Containerization**: Docker & Docker Compose
 
 ## 📋 Prerequisites
@@ -100,13 +104,27 @@ Create-order requests may send an optional HTTP header `Idempotency-Key` (non-bl
    ```
 
 2. **Build the application**
+
+   **Linux / macOS / Git Bash:**
    ```bash
    ./mvnw clean compile
    ```
 
+   **Windows (Command Prompt or PowerShell, from the project root):**
+   ```powershell
+   .\mvnw.cmd clean compile
+   ```
+
 3. **Run the application**
+
+   **Linux / macOS / Git Bash:**
    ```bash
    ./mvnw spring-boot:run "-Dspring-boot.run.profiles=dev"
+   ```
+
+   **Windows:**
+   ```powershell
+   .\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=dev"
    ```
 
 The application will start on `http://localhost:8080/customer-info`
@@ -129,7 +147,7 @@ The application will start on `http://localhost:8080/customer-info`
 
 ## ⚙️ Configuration
 
-The application uses `src/main/resources/application.yml` to configure the servlet context path, H2 datasource, JPA settings, logging, actuator endpoints, Resilience4j policies, graceful shutdown behavior, and Caffeine-backed Spring Cache. The default context path is `/customer-info`.
+The application uses `src/main/resources/application.yml` to configure the servlet context path, H2 datasource, JPA settings, logging, actuator endpoints, **Micrometer tracing** (Brave, W3C propagation, sampling), Resilience4j policies, graceful shutdown behavior, and Caffeine-backed Spring Cache. The default context path is `/customer-info`.
 
 The `resilience4j` configuration includes:
 - `circuitbreaker` for failure isolation
@@ -205,7 +223,7 @@ Per-user rate limiting is enforced at the **service layer** with [Bucket4j](http
 
 ### How a request is identified
 
-A `UserKeyFilter` registered with `Ordered.HIGHEST_PRECEDENCE` populates a `ThreadLocal` `UserContext` at the start of every request via `DefaultUserKeyResolver`:
+A `UserKeyFilter` registered with `Ordered.HIGHEST_PRECEDENCE + 10` (after Micrometer’s HTTP observation filter opens the trace span) populates a `ThreadLocal` `UserContext` at the start of every request via `DefaultUserKeyResolver`:
 
 1. `X-User-Id` header (trimmed) → `user:<id>`
 2. else first hop of `X-Forwarded-For` → `ip:<address>`
@@ -280,17 +298,23 @@ Set `app.rate-limit.enabled=false` to disable enforcement entirely; the aspect s
 
 `RateLimitExceededException` is mapped by `GlobalExceptionHandler` to `HTTP 429 Too Many Requests` with a `Retry-After` header (seconds until the next token is available):
 
+Example **429** response shape (values vary at runtime: `timestamp` from `LocalDateTime`, `retryAfterSeconds` / `Retry-After` from the bucket probe, `traceId` / `X-Trace-Id` only when Micrometer has a current span):
+
 ```http
 HTTP/1.1 429 Too Many Requests
 Retry-After: 12
+X-Trace-Id: 6a01a08d44bad222069ae3b5d782f228
 Content-Type: application/json
+```
 
+```json
 {
   "timestamp": "2026-05-08T12:00:00",
   "status": 429,
   "error": "Too Many Requests",
   "message": "Rate limit exceeded for bucket: customer.write",
-  "retryAfterSeconds": 12
+  "retryAfterSeconds": 12,
+  "traceId": "6a01a08d44bad222069ae3b5d782f228"
 }
 ```
 
@@ -299,7 +323,34 @@ Content-Type: application/json
 - `RateLimitAspectTest` (8 unit tests) — token consumption, per-user isolation, `enabled=false` short-circuit, anonymous-user fallback, per-annotation overrides, named-profile resolution, blank-key signature fallback.
 - `UserKeyResolverTest` (7 unit tests) — `null` request, `X-User-Id` precedence and trimming, `X-Forwarded-For` first-hop, blank/missing forwarded header, missing `RemoteAddr`, all-missing.
 - `RateLimitExceededExceptionTest` (1 unit test) — exposes `userKey`, `bucketId`, and `retryAfterNanos` accessors.
-- `RateLimitIntegrationTest` (3 end-to-end tests) — boots the full Spring context and verifies HTTP 429 with `Retry-After` after `capacity + 1` requests, isolation between two `X-User-Id` values, and IP-based bucketing when no header is present.
+- `RateLimitIntegrationTest` (3 end-to-end tests) — boots the full Spring context and verifies HTTP 429 with `Retry-After` after `capacity + 1` requests, isolation between two `X-User-Id` values, IP-based bucketing when no header is present, and **`traceId` / `X-Trace-Id`** on 429 when tracing is active.
+
+## Distributed tracing
+
+> **Design reference:** rationale, lifecycle diagrams, configuration tables, and operational notes are in [`doc/tracing.md`](doc/tracing.md).
+
+The app uses **Spring Boot Micrometer Tracing** with the **Brave** bridge (`spring-boot-micrometer-tracing-brave` + `micrometer-tracing-bridge-brave`). There is **no Zipkin/OTLP exporter** in the default `pom.xml`; add one when you want a remote trace backend.
+
+### Propagation and sampling
+
+- **W3C** `traceparent` / `tracestate` are the configured consume/produce propagation type (`management.tracing.propagation` in `application.yml`).
+- **Sampling**: probability `1.0` by default; the **`prod`** profile sets `management.tracing.sampling.probability` to `0.1`.
+
+### Logs
+
+- Logback patterns include **`[%X{traceId:-},%X{spanId:-}]`** for request-scoped correlation.
+- `logging.pattern.correlation` is set for Spring Boot’s default correlation formatting alongside the custom layout.
+
+### HTTP API
+
+- **`X-Trace-Id`**: added on successful `@RestController` JSON responses via `TraceIdResponseAdvice` (runs while the Micrometer span is still current during body serialization).
+- **Error JSON**: `GlobalExceptionHandler` adds a **`traceId`** field and repeats **`X-Trace-Id`** on validation and other standardized error responses (including HTTP 429 from rate limiting).
+
+### Tests
+
+- **`TracingIntegrationTest`** — random-port HTTP checks: `X-Trace-Id` on **GET**/**POST** success (including **201**), `traceId` aligned with **`X-Trace-Id`** on validation **400** and **`IllegalArgumentException`** **400**, inbound W3C **`traceparent`** honored.
+- **`TracingSmokeTest`** — three minimal HTTP checks (same themes as above, no `IntegrationTest` suffix so it still runs when Surefire excludes `**/*IntegrationTest.java`).
+- **`TraceIdResponseAdviceTest`** / **`GlobalExceptionHandlerTracingTest`** — Mockito unit tests for response advice and exception handler trace correlation (see [`doc/tracing.md`](doc/tracing.md#82-unit-tests-mockito)).
 
 ## 📚 API Documentation
 
@@ -309,17 +360,21 @@ Content-Type: application/json
 ```bash
 POST /customer-info/customer/save
 Content-Type: application/json
+```
 
+```json
 {
-    "name": "John Doe",
-    "age": 30,
-    "shippingAddress": {
-        "streetName": "123 Main St",
-        "city": "Istanbul",
-        "country": "TR"
-    }
+  "name": "John Doe",
+  "age": 30,
+  "shippingAddress": {
+    "streetName": "123 Main St",
+    "city": "Istanbul",
+    "country": "TR"
+  }
 }
 ```
+
+`name` is **2–100** characters, `age` **18–120**, `shippingAddress` is optional; when present, `streetName` **2–100**, `city` and `country` each **2–50** (all `@NotBlank`).
 
 #### List Customers
 ```bash
@@ -349,7 +404,9 @@ Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
 ```bash
 POST /customer-info/customerorder/save
 Content-Type: application/json
+```
 
+```json
 {
   "customer": {
     "id": 1,
@@ -365,12 +422,31 @@ Content-Type: application/json
   "orderDate": "2026-04-28T16:00:00",
   "title": "Spring Order",
   "orderItems": [
-    {
-      "quantity": 2
-    },
-    {
-      "quantity": 1
-    }
+    { "quantity": 2 },
+    { "quantity": 1 }
+  ]
+}
+```
+
+`orderDate` is ISO-8601 `LocalDateTime` (no timezone). `title` is **2–100** characters. Each `orderItems[].quantity` is **1–10000**. The nested **`customer.id`** and **`shippingAddress.id`** must match rows already in the database (for example the ids returned by **Create Customer**). Wrong or missing ids lead to persistence errors or wrong associations.
+
+#### Create customer order (customer reference only)
+
+Same endpoint. When the customer already exists, you can send **only** `customer.id` (no name, address, or shipping-address ids). Replace **`42`** in the JSON below with the integer `id` from **Create Customer** or **List Customers**; this matches the payload shape used in `CustomerOrderIdempotencyIntegrationTest`. A **new** customer cannot be created from this shape alone (`CustomerOrder.customer` has no `CascadeType.PERSIST`); use the full nested customer above or create the customer first.
+
+```bash
+POST /customer-info/customerorder/save
+Content-Type: application/json
+```
+
+```json
+{
+  "customer": { "id": 42 },
+  "orderDate": "2026-06-01T10:30:00",
+  "title": "Minimal payload order",
+  "orderItems": [
+    { "quantity": 1 },
+    { "quantity": 2 }
   ]
 }
 ```
@@ -401,11 +477,15 @@ GET /customer-info/orderitem/list
 ```bash
 POST /customer-info/orderitem/save
 Content-Type: application/json
+```
 
+```json
 {
-    "quantity": 5
+  "quantity": 5
 }
 ```
+
+`quantity` must be **1–10000** (`int`, required).
 
 #### Update Order Item
 ```bash
@@ -421,17 +501,27 @@ DELETE /customer-info/orderitem/delete/{id}
 
 ### Unit Tests & Integration Tests
 
-Run all tests:
+Use the Maven Wrapper from the repo root (`./mvnw` on Unix/macOS, `mvnw.cmd` on Windows).
+
+Run all tests (unit + integration + `TracingSmokeTest`):
+
 ```bash
-./mvnw test
+./mvnw clean test
 ```
 
-Run only integration tests:
+Run only classes named `*IntegrationTest` (full Spring contexts; excludes `TracingSmokeTest`):
+
 ```bash
-./mvnw test -Dtest="*IntegrationTest"
+./mvnw test "-Dsurefire.includes=**/*IntegrationTest.java"
 ```
 
-Integration tests include, among others, `CustomerOrderIdempotencyIntegrationTest` (verifies duplicate `POST` with the same `Idempotency-Key`), `CustomerOrderServiceIntegrationTest`, `CustomerServiceIntegrationTest`, and `DatasourceProxyListenerIntegrationTest`.
+Run **unit-style tests only** (skip `*IntegrationTest` and `TracingSmokeTest`; faster CI slice):
+
+```bash
+./mvnw test "-Dsurefire.excludes=**/*IntegrationTest.java,**/TracingSmokeTest.java"
+```
+
+Integration tests include, among others, `CustomerOrderIdempotencyIntegrationTest` (duplicate `POST` with the same `Idempotency-Key`), `CustomerOrderServiceIntegrationTest`, `CustomerServiceIntegrationTest`, `DatasourceProxyListenerIntegrationTest`, `GracefulShutdownIntegrationTest`, `RateLimitIntegrationTest`, and `TracingIntegrationTest`.
 
 Caching is turned off under the `dev` profile and in shared test `application*.properties` (`spring.cache.type=none`), so these tests always hit the database unless you change that configuration.
 
@@ -445,41 +535,61 @@ Graceful shutdown coverage:
 
 - `GracefulShutdownIntegrationTest` validates graceful shutdown properties and shutdown listener lifecycle logs during context close.
 
-Run with coverage:
-```bash
-./mvnw test jacoco:report
-```
+JaCoCo runs in the **`test`** phase (`pom.xml`); after `./mvnw clean test`, open **`target/site/jacoco/index.html`** for the HTML report.
 
 ### Layer 2 Smoke Tests
 
-The project includes comprehensive Layer 2 smoke tests that validate the application in a containerized environment.
+Layer 2 smoke tests run the **packaged** Spring Boot app in **Docker Compose**, then call a small set of **public REST endpoints** over HTTP. They are **not** the same as Maven `*IntegrationTest` classes under `src/test` (those run via Surefire).
 
 #### Prerequisites for Smoke Tests
-- Docker installed and running
-- Docker Compose available
+
+- **Docker** installed and running (`docker info` must succeed)
+- **`docker compose`** (Compose V2) on your `PATH`
+- **Repository layout** — each runner resolves the **repository root** from the script path and `cd`s there, so you may invoke the script from any working directory if you use an absolute or correct relative path to the script file
+- **Host port `8080` free** — `docker-compose.yml` publishes `8080:8080`
 
 #### Running Smoke Tests
 
-**Unix/Linux/Mac:**
+**Unix / Linux / macOS:**
+
 ```bash
 bash .github/integration-tests/run-layer2-tests.sh
 ```
 
-**Windows:**
+**Windows (PowerShell or cmd, from repo root):**
+
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .github/integration-tests/run-layer2-tests.ps1
 ```
 
-#### What Smoke Tests Validate
-- ✅ Application startup and health endpoint
-- ✅ Customer creation and persistence
-- ✅ Customer order creation with multiple items
-- ✅ Bidirectional relationship integrity
-- ✅ Database operations in containerized environment
+#### Execution flow (both runners)
 
-### Test Results
+1. **Build JAR** — `mvnw` / `mvnw.cmd -DskipTests package` (tests skipped; a fresh `target/...jar` is required for the Docker image `COPY`).
+2. **Start stack** — `docker compose -f .github/integration-tests/docker-compose.yml up -d --build`  
+   - **Image:** `customer-info-app:layer2-smoke`  
+   - **Dockerfile:** `.github/integration-tests/Dockerfile` — copies `target/spring-boot-hibernate-bidirectional-many-to-one-relationship-mapping.jar` into `eclipse-temurin:25-jdk-jammy`, `java -jar /app/app.jar`  
+   - **Container env:** `SPRING_PROFILES_ACTIVE=dev`, `SERVER_SERVLET_CONTEXT_PATH=/customer-info`
+3. **Wait for readiness** — poll **`GET http://localhost:8080/customer-info/actuator/health`** until success or **~120 seconds** elapses (**3 second** sleep between attempts).
+4. **HTTP checks** (all against `http://localhost:8080/customer-info`):
+   - **`POST /customer/save`** — JSON customer + shipping address; response must contain `"id"`.
+   - **`POST /customerorder/save`** — JSON order with nested customer and two order items; response must contain `"id"` and `"orderItems"`.
+   - **`GET /orderitem/list`** — response must contain `"quantity"` (order items persisted and listed).
+5. **Teardown** — `docker compose ... down --remove-orphans` (Unix: `trap` on `EXIT`; Windows: registered on `PowerShell.Exiting`; run cleanup when the shell exits).
+
+#### What Smoke Tests Validate
+
+- Application **startup** and **Actuator health** (`/actuator/health`) from the host
+- **Customer** create via REST and persistence (H2 in the container)
+- **Customer order** create with **multiple order items** and nested JSON
+- **Order item list** retrieval after writes (relationship / persistence path)
+- End-to-end behavior **inside the published container port** (same as a local `8080` smoke)
+
+#### Console output
+
+On success the scripts print a banner similar to:
+
 ```
-✅ Layer 2 smoke tests PASSED
+Layer 2 smoke tests PASSED
 ========================================
 ```
 
