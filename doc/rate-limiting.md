@@ -12,6 +12,8 @@ file-level walkthrough, the 429 response contract, and the testing strategy.
 > Tests live under `src/test/java/com/company/customerinfo/ratelimit/` and
 > `src/test/java/com/company/customerinfo/exception/`.
 
+> **GitHub rendering:** Mermaid on GitHub rejects some syntax that still works in other preview tools. This file uses Unicode arrows instead of HTML entities (`&rarr;`), double-quoted node and participant labels when they contain `()`, avoids `Map~String,Profile~`-style generics (**commas inside `~` generics are not supported** in Mermaid), and keeps `sequenceDiagram` participant aliases in quotes when they contain parentheses. When in doubt, check a block at [mermaid.live](https://mermaid.live).
+
 ## Table of Contents
 
 1. [Goals and scope](#goals-and-scope)
@@ -101,14 +103,14 @@ same service was rejected as confusing.
 ```mermaid
 flowchart LR
     Client[HTTP client]
-    Filter[UserKeyFilter<br/>HIGHEST_PRECEDENCE + 10]
-    Resolver[DefaultUserKeyResolver<br/>X-User-Id &rarr; X-Forwarded-For &rarr; RemoteAddr]
-    Context[(UserContext<br/>ThreadLocal)]
+    Filter["UserKeyFilter<br/>HIGHEST_PRECEDENCE + 10"]
+    Resolver["DefaultUserKeyResolver<br/>X-User-Id → X-Forwarded-For → RemoteAddr"]
+    Context[("UserContext<br/>ThreadLocal")]
     Controller[REST Controller]
     Aspect[RateLimitAspect<br/>Ordered.HIGHEST_PRECEDENCE]
     Registry[BucketRegistry<br/>Caffeine cache]
     Bucket[(Bucket4j<br/>token bucket)]
-    Service[Service method<br/>@RateLimited]
+    Service["Service method<br/>@RateLimited"]
     Handler[GlobalExceptionHandler]
     Response[HTTP response]
 
@@ -148,7 +150,7 @@ pair owns a bucket with a fixed `capacity` and a refill rule that adds
 flowchart LR
     Refill["Refill source<br/>+refillTokens every refillPeriodSeconds"] --> Bucket
     Bucket[("Token bucket<br/>capacity = N<br/>current = c")]
-    Bucket -->|"tryConsume(1) when c &gt; 0"| Allow[Request proceeds<br/>c &larr; c - 1]
+    Bucket -->|"tryConsume(1) when c > 0"| Allow["Request proceeds<br/>c ← c - 1"]
     Bucket -.->|"tryConsume(1) when c == 0"| Deny["RateLimitExceededException<br/>retryAfter = nanosToWaitForRefill"]
 ```
 
@@ -175,17 +177,17 @@ sequenceDiagram
     participant C as HTTP Client
     participant F as UserKeyFilter
     participant R as DefaultUserKeyResolver
-    participant U as UserContext (ThreadLocal)
+    participant U as "UserContext (ThreadLocal)"
     participant Ctl as Controller
     participant A as RateLimitAspect
-    participant Reg as BucketRegistry (Caffeine)
-    participant B as Bucket4j Bucket
+    participant Reg as "BucketRegistry (Caffeine)"
+    participant B as "Bucket4j Bucket"
     participant S as Service method
     participant H as GlobalExceptionHandler
 
     C->>F: HTTP request
     F->>R: resolve(request)
-    R-->>F: Optional<userKey>
+    R-->>F: Optional of userKey
     F->>U: UserContext.set(userKey)
     F->>Ctl: filterChain.doFilter()
     Ctl->>A: invoke proxied service method
@@ -225,31 +227,31 @@ questions:
 
 ```mermaid
 flowchart TD
-    Start([Request enters @RateLimited method]) --> Enabled{app.rate-limit.enabled?}
-    Enabled -- false --> Proceed[proceed&#40;&#41; without bucket check]
+    Start(["Request enters @RateLimited method"]) --> Enabled{app.rate-limit.enabled?}
+    Enabled -- false --> Proceed["proceed() without bucket check"]
     Enabled -- true --> ResolveKey
-    ResolveKey[Resolve userKey from UserContext<br/>fallback &quot;anonymous&quot;] --> BucketId
+    ResolveKey["Resolve userKey from UserContext<br/>fallback anonymous literal"] --> BucketId
     BucketId{annotation key has text?}
     BucketId -- yes --> UseAnnotationKey[bucketId = annotation.key]
-    BucketId -- no --> UseSignature[bucketId = SimpleClassName + &quot;#&quot; + methodName]
+    BucketId -- no --> UseSignature["bucketId = SimpleClassName + '#' + methodName"]
     UseAnnotationKey --> ResolveLimit
     UseSignature --> ResolveLimit
-    ResolveLimit[Resolve capacity / refillTokens / refillPeriodSeconds] --> Override{annotation override &gt; 0?}
+    ResolveLimit[Resolve capacity / refillTokens / refillPeriodSeconds] --> Override{"annotation override > 0?"}
     Override -- yes --> UseOverride[Use annotation value for that field]
     Override -- no --> ProfileLookup
-    ProfileLookup[Take suffix after last . of bucketId] --> NamedProfile{profiles[suffix] exists?}
+    ProfileLookup[Take suffix after last . of bucketId] --> NamedProfile{"profiles[suffix] exists?"}
     NamedProfile -- yes --> UseNamed[Use named profile field]
     NamedProfile -- no --> UseDefault[Use app.rate-limit.default field]
     UseOverride --> CacheLookup
     UseNamed --> CacheLookup
     UseDefault --> CacheLookup
-    CacheLookup[BucketRegistry.resolve&#40;userKey + &quot;|&quot; + bucketId, ...&#41;] --> NewOrExisting{bucket exists in Caffeine?}
+    CacheLookup["BucketRegistry.resolve(userKey + '|' + bucketId, ...)"] --> NewOrExisting{bucket exists in Caffeine?}
     NewOrExisting -- yes --> ReuseBucket[Return existing bucket]
     NewOrExisting -- no --> BuildBucket[Build bucket with resolved limit]
     ReuseBucket --> Consume
     BuildBucket --> Consume
-    Consume[bucket.tryConsumeAndReturnRemaining&#40;1&#41;] --> Result{probe.isConsumed?}
-    Result -- yes --> ProceedAllow[proceed&#40;&#41; with business logic]
+    Consume["bucket.tryConsumeAndReturnRemaining(1)"] --> Result{probe.isConsumed?}
+    Result -- yes --> ProceedAllow["proceed() with business logic"]
     Result -- no --> Throw[throw RateLimitExceededException]
 ```
 
@@ -279,20 +281,20 @@ Important subtleties:
 ```mermaid
 flowchart TD
     A[HttpServletRequest] --> Null{request == null?}
-    Null -- yes --> Empty1[Optional.empty&#40;&#41;]
+    Null -- yes --> Empty1["Optional.empty()"]
     Null -- no --> Header
     Header[Read X-User-Id header] --> HeaderHas{StringUtils.hasText?}
-    HeaderHas -- yes --> User[user: + trimmed value]
+    HeaderHas -- yes --> User["user: + trimmed value"]
     HeaderHas -- no --> Forwarded
     Forwarded[Read X-Forwarded-For header] --> ForwardedHas{StringUtils.hasText?}
     ForwardedHas -- no --> Remote
     ForwardedHas -- yes --> SplitFirst[Split on , take first hop, trim]
     SplitFirst --> FirstHas{first hop has text?}
-    FirstHas -- yes --> Ip1[ip: + first hop]
+    FirstHas -- yes --> Ip1["ip: + first hop"]
     FirstHas -- no --> Remote
-    Remote[HttpServletRequest.getRemoteAddr&#40;&#41;] --> RemoteHas{has text?}
-    RemoteHas -- yes --> Ip2[ip: + remote address]
-    RemoteHas -- no --> Empty2[Optional.empty&#40;&#41;]
+    Remote["HttpServletRequest.getRemoteAddr()"] --> RemoteHas{has text?}
+    RemoteHas -- yes --> Ip2["ip: + remote address"]
+    RemoteHas -- no --> Empty2["Optional.empty()"]
 ```
 
 Notes:
@@ -375,8 +377,8 @@ classDiagram
     class RateLimitProperties {
         boolean enabled
         Cache cache
-        Profile default
-        Map~String,Profile~ profiles
+        Profile defaults
+        Map profiles
     }
     class Profile {
         long capacity
@@ -385,7 +387,7 @@ classDiagram
     }
     class UserKeyResolver {
         <<interface>>
-        +Optional~String~ resolve(HttpServletRequest)
+        +resolve(HttpServletRequest) Optional
     }
     class DefaultUserKeyResolver
     class UserKeyFilter {
@@ -394,7 +396,7 @@ classDiagram
     class UserContext {
         <<final>>
         +set(String)
-        +get() Optional~String~
+        +get() Optional
         +clear()
     }
     class BucketRegistry {
@@ -418,6 +420,10 @@ classDiagram
     RateLimitProperties *-- Profile
     GlobalExceptionHandler ..> RateLimitExceededException
     RateLimitAspect ..> RateLimitExceededException
+
+    note for RateLimitProperties "defaults binds YAML app.rate-limit.default; profiles is Map String to Profile"
+    note for UserKeyResolver "resolve returns Optional String"
+    note for UserContext "get returns Optional String"
 ```
 
 ### `RateLimited`
