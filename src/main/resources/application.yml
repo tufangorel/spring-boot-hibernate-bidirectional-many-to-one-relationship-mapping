@@ -1,4 +1,6 @@
 spring:
+  application:
+    name: customer-info
   cache:
     type: caffeine
     cache-names: customers, customerOrders, orderItems, customerByShippingAddress
@@ -59,6 +61,9 @@ logging:
     org.apache.tomcat: DEBUG
     org.apache.catalina: DEBUG
     com.company.customerinfo: INFO
+  pattern:
+    correlation: "[%X{traceId:-},%X{spanId:-}] "
+  include-application-name: false
 
 management:
   endpoints:
@@ -75,6 +80,12 @@ management:
     export:
       prometheus:
         enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+    propagation:
+      consume: W3C
+      produce: W3C
 
 app:
   health:
@@ -141,3 +152,13 @@ resilience4j:
       customerService:
         maxConcurrentCalls: 50
         maxWaitDuration: 10ms
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+management:
+  tracing:
+    sampling:
+      probability: 0.1

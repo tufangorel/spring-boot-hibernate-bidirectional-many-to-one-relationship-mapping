@@ -31,7 +31,7 @@ public class RateLimitConfig {
     @Bean
     public FilterRegistrationBean<UserKeyFilter> userKeyFilterRegistration(@Autowired UserKeyResolver resolver) {
         FilterRegistrationBean<UserKeyFilter> registration = new FilterRegistrationBean<>(new UserKeyFilter(resolver));
-        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 10); // after Micrometer HTTP observation (span open)
         registration.addUrlPatterns("/*");
         return registration;
     }

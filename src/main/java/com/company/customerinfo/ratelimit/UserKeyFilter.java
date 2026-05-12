@@ -12,7 +12,8 @@ import java.io.IOException;
  * Populates {@link UserContext} from the request before any controller or
  * service runs and clears it afterward. Registered with the highest
  * precedence in {@code RateLimitConfig} so it executes before any other
- * application filter.
+ * application filter. Order is {@code HIGHEST_PRECEDENCE + 10} so Micrometer's
+ * HTTP observation / tracing filter runs first and establishes trace context.
  */
 public class UserKeyFilter extends OncePerRequestFilter {
 
