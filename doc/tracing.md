@@ -94,20 +94,22 @@ Adding **`spring-boot-starter-zipkin`** or OTLP export is the natural next step 
 
 ## 3. High-level architecture
 
+> **GitHub:** Mermaid here avoids `\n` inside node labels (use `<br/>` instead) and quoted labels where special characters appear, so the file renders in GitHub’s rich Markdown view.
+
 ```mermaid
 flowchart LR
-  subgraph Client
-    C[HTTP client / gateway]
+  subgraph clientLayer["Client"]
+    C["HTTP client / gateway"]
   end
-  subgraph Tomcat["Tomcat + filter chain"]
-    O[Micrometer HTTP observation filter\nopens span / MDC]
-    U[UserKeyFilter\nHIGHEST_PRECEDENCE + 10]
-    D[DispatcherServlet]
+  subgraph tomcatLayer["Tomcat + filter chain"]
+    O["Micrometer HTTP observation filter<br/>opens span / MDC"]
+    U["UserKeyFilter<br/>HIGHEST_PRECEDENCE + 10"]
+    D["DispatcherServlet"]
   end
-  subgraph MVC["Spring MVC"]
-    CT[Controllers]
-    A[TraceIdResponseAdvice\nResponseBodyAdvice]
-    EH[GlobalExceptionHandler\n@RestControllerAdvice]
+  subgraph mvcLayer["Spring MVC"]
+    CT["Controllers"]
+    A["TraceIdResponseAdvice<br/>ResponseBodyAdvice"]
+    EH["GlobalExceptionHandler<br/>RestControllerAdvice"]
   end
   C -->|traceparent optional| O
   O --> U --> D --> CT
