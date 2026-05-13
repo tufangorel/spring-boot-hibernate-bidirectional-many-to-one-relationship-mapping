@@ -19,6 +19,7 @@ A comprehensive Spring Boot application demonstrating Hibernate bidirectional ma
 - [Caching](#caching)
 - [Rate Limiting](#rate-limiting)
 - [Rate limiting design](doc/rate-limiting.md)
+- [Idempotency design](doc/idempotency.md)
 - [Distributed tracing](#distributed-tracing)
 - [Tracing design document](doc/tracing.md)
 - [API Documentation](#api-documentation)
@@ -39,7 +40,7 @@ A comprehensive Spring Boot application demonstrating Hibernate bidirectional ma
 - **Spring Boot Actuator**: Health checks, metrics, info, and Prometheus-compatible metrics export
 - **Comprehensive testing**: Unit tests, `*IntegrationTest` Spring Boot tests, optional **`TracingSmokeTest`** (HTTP tracing sanity check without the `IntegrationTest` name so it still runs when Surefire excludes `**/*IntegrationTest.java`), and Layer 2 container smoke tests
 - **Containerized Testing**: Docker-based smoke tests for production-like validation
-- **Idempotent order creation**: Optional `Idempotency-Key` header on `POST /customerorder/save` stores a mapping in `idempotency_record` so retries return the same saved order instead of creating duplicates
+- **Idempotent creates**: Optional **`Idempotency-Key`** header on selected **`POST …/save`** endpoints (customer, customer order, order item) stores a mapping in **`idempotency_record`** so safe retries can return the same persisted resource; see [`doc/idempotency.md`](doc/idempotency.md)
 - **Response caching**: Spring Cache with Caffeine on read paths in the service layer (`@Cacheable` / `@CacheEvict`), with cache-friendly JPA fetch queries for customer orders and shipping-address lookups
 - **Distributed tracing (Micrometer + Brave)**: W3C `traceparent` propagation, `traceId` / `spanId` in logs, `X-Trace-Id` on JSON responses, and `traceId` on standardized error payloads
 - **Graceful shutdown**: Spring Boot graceful server shutdown with lifecycle timeout and application shutdown hooks for predictable stop behavior
@@ -61,9 +62,9 @@ CustomerOrder (1) ────→ (Many) OrderItem
 - Cascade operations for data persistence
 - Lazy/Eager loading configurations
 
-### Idempotency (customer orders)
+### Idempotency
 
-Create-order requests may send an optional HTTP header `Idempotency-Key` (non-blank string, up to 128 characters in storage). The first successful save persists the new order id keyed by `(idempotency_key, entity_type)` in the `idempotency_record` table. Later requests with the same key for customer orders load that order from the database and return it with no second insert. If the header is omitted or blank, behavior is unchanged from a normal create.
+Optional **`Idempotency-Key`** on **customer**, **customer order**, and **order item** **POST save** paths records **`(idempotency_key, entity_type) → resource_id`** after the first successful insert so retries can return the existing row. Full contract, storage schema, flow, tests, and limitations: **[`doc/idempotency.md`](doc/idempotency.md)**.
 
 ### ER Diagram
 
@@ -395,7 +396,7 @@ DELETE /customer-info/customer/delete/{id}
 
 #### Create Customer Order with Items
 
-Optional header for safe retries (same body + same key returns the first persisted order):
+Optional header for safe retries (same body + same key returns the first persisted order). Behavior, all supported **`POST /save`** paths, and storage details: [`doc/idempotency.md`](doc/idempotency.md).
 
 ```http
 Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
